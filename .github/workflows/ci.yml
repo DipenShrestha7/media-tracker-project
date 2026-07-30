@@ -1,0 +1,47 @@
+name: Continuous Integration Checks
+
+# Trigger this workflow whenever code is pushed to main or a Pull Request is opened
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # Job 1: Check Node.js Fastify API
+  check-backend-api:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install & Test Node Backend
+        run: |
+          cd apps/api
+          npm install
+          npm run build
+
+  # Job 2: Check Python FastAPI Engine
+  check-ai-service:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Python Dependencies
+        run: |
+          cd apps/ai-service
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
