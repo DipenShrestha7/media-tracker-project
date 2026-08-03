@@ -27,6 +27,12 @@ export const fetchLibraryItems = () => requestJson<LibraryItem[]>("/library");
 
 export const fetchHistoryItems = () => requestJson<LibraryItem[]>("/history");
 
+export const addItemToLibrary = (item: ExploreItem) =>
+  requestJson<LibraryItem>("/library", {
+    method: "POST",
+    body: JSON.stringify(item),
+  });
+
 export const addItemToWatchlist = (item: ExploreItem) =>
   requestJson<LibraryItem>("/watchlist", {
     method: "POST",

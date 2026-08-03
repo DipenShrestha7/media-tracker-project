@@ -4,6 +4,7 @@ import { Sequelize } from "sequelize";
 dotenv.config({ path: new URL("../../.env", import.meta.url) });
 
 const databaseUrl = process.env.DATABASE_URL;
+export const hasDatabase = Boolean(databaseUrl);
 
 // Guard check: Throw early if DATABASE_URL is missing
 if (!databaseUrl) {

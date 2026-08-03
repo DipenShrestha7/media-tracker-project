@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Sun, Moon } from "lucide-react";
 import { NavLink } from "react-router";
 import axios from "axios";
+import { useNavigate } from "react-router";
 
 interface NavbarProps {
   darkMode: boolean;
@@ -22,8 +23,10 @@ function Navbar({
   onOpenLogin,
   authVersion,
 }: NavbarProps) {
+  const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -56,14 +59,36 @@ function Navbar({
 
     fetchUser();
   }, [authVersion]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
   const getNavLinkClassName = ({ isActive }: { isActive: boolean }) =>
     isActive
       ? "text-purple-600 dark:text-purple-400 font-bold"
       : "hover:text-purple-600 dark:hover:text-purple-400";
 
   return (
-    <nav className="flex items-center justify-between px-8 py-4 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md sticky top-0 z-40">
-      <div className="flex items-center gap-2 font-black text-2xl tracking-wide text-purple-600 dark:text-purple-400 cursor-pointer">
+    <nav
+      ref={dropdownRef}
+      className="flex items-center justify-between px-8 py-4 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md sticky top-0 z-40"
+    >
+      <div
+        onClick={() => navigate("/")}
+        className="flex items-center gap-2 font-black text-2xl tracking-wide text-purple-600 dark:text-purple-400 cursor-pointer"
+      >
         <img className="w-35" src="nexuslogo.png" alt="logo-text" />
       </div>
 
@@ -79,13 +104,8 @@ function Navbar({
           </NavLink>
         </li>
         <li>
-          <NavLink to="/watchlist" className={getNavLinkClassName}>
-            Watchlist
-          </NavLink>
-        </li>
-        <li>
-          <NavLink to="/history" className={getNavLinkClassName}>
-            History
+          <NavLink to="/library" className={getNavLinkClassName}>
+            Library
           </NavLink>
         </li>
         <li>

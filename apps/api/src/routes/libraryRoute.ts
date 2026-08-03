@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import {
   addToHistory,
-  addToWatchlist,
+  addToLibrary,
   listHistoryItems,
   listLibraryItems,
   removeLibraryItem,
@@ -37,12 +37,15 @@ function libraryRoutes(fastify: FastifyInstance) {
   fastify.get("/health", async () => ({ ok: true }));
 
   fastify.get("/library", async () => {
-    listLibraryItems();
+    return listLibraryItems();
   });
 
   fastify.get("/watchlist", async () => listLibraryItems());
 
-  fastify.post("/watchlist", async (request, reply) => {
+  const saveLibraryItem = async (
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ) => {
     if (!hasDatabase) {
       return reply.status(503).send({
         error:
@@ -51,10 +54,14 @@ function libraryRoutes(fastify: FastifyInstance) {
     }
 
     const item = exploreItemSchema.parse(request.body);
-    const savedItem = await addToWatchlist(item);
+    const savedItem = await addToLibrary(item);
 
     return reply.status(201).send(savedItem);
-  });
+  };
+
+  fastify.post("/library", saveLibraryItem);
+
+  fastify.post("/watchlist", saveLibraryItem);
 
   fastify.get("/history", async () => listHistoryItems());
 

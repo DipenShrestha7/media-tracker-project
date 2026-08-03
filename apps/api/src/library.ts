@@ -1,5 +1,9 @@
 import type { ExploreItem } from "./media.js";
-import { LibraryEntry, hasDatabase, type LibraryStatus } from "./database.js";
+import {
+  LibraryEntry,
+  type LibraryStatus,
+} from "../src/models/libraryEntryModel.js";
+import { hasDatabase } from "../src/config/db.js";
 
 export interface LibraryItem extends ExploreItem {
   status: LibraryStatus;
@@ -109,6 +113,8 @@ export const listHistoryItems = async (): Promise<LibraryItem[]> => {
 
 export const addToWatchlist = (item: ExploreItem) =>
   upsertEntry(item, "PLAN_TO_WATCH");
+
+export const addToLibrary = addToWatchlist;
 
 export const addToHistory = (item: ExploreItem) =>
   upsertEntry(item, "COMPLETED");

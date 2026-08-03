@@ -1,6 +1,28 @@
 import React from "react";
 import type { Feature } from "../../types";
-import { features } from "../../data/mockData";
+
+const features: Feature[] = [
+  {
+    title: "Track Everything",
+    desc: "All your media in one beautiful place.",
+    icon: "⭐",
+  },
+  {
+    title: "AI Assistant",
+    desc: "Ask anything about your favorite media.",
+    icon: "💬",
+  },
+  {
+    title: "Personalized",
+    desc: "Smart recommendations just for you.",
+    icon: "📊",
+  },
+  {
+    title: "Your Data",
+    desc: "Private, secure, and always yours.",
+    icon: "🛡️",
+  },
+];
 
 export default function Footer(): React.JSX.Element {
   return (

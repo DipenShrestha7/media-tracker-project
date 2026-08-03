@@ -1,12 +1,10 @@
 import { useEffect, useState } from "react";
 import Navbar from "./components/layout/Navbar.tsx";
-import Footer from "./components/layout/Footer.tsx";
 import LoginModal from "./components/modals/LoginModal.tsx";
 import Explore from "./components/pages/Explore.tsx";
 import Assistant from "./components/pages/Assistant.tsx";
 import About from "./components/pages/About.tsx";
-import History from "./components/pages/History.tsx";
-import Watchlist from "./components/pages/Watchlist.tsx";
+import Library from "./components/pages/Library.tsx";
 import HomePage from "./components/pages/HomePage.tsx";
 import { Routes, Route, Navigate } from "react-router";
 
@@ -37,13 +35,11 @@ export default function App() {
         <Route path="/" element={<HomePage />} />
         <Route path="/homepage" element={<HomePage />} />
         <Route path="/explore" element={<Explore />} />
-        <Route path="/watchlist" element={<Watchlist />} />
-        <Route path="/history" element={<History />} />
+        <Route path="/library" element={<Library />} />
         <Route path="/assistant" element={<Assistant />} />
         <Route path="/about" element={<About />} />
         <Route path="*" element={<Navigate to="/homepage" replace />} />
       </Routes>
-      <Footer />
     </div>
   );
 }

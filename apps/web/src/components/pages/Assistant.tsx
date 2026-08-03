@@ -82,12 +82,7 @@ const Assistant: React.FC = () => {
             <Bot className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="font-bold text-lg leading-tight">
-              Media AI Assistant
-            </h1>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Powered by LangChain, RAG, & Web Search
-            </p>
+            <h1 className="font-bold text-lg leading-tight">AI Assistant</h1>
           </div>
         </div>
         <button

@@ -6,15 +6,17 @@ import {
   Filter,
   RefreshCcw,
   BookmarkPlus,
-  PlayCircle,
 } from "lucide-react";
 import type { ExploreItem, ExploreResponse } from "../../types/explore";
 import type { LibraryStatus } from "../../types/library";
-import { addItemToHistory, addItemToWatchlist } from "../../lib/libraryApi";
+import { addItemToLibrary } from "../../lib/libraryApi";
+import { useSearchParams } from "react-router";
 
 const Explore: React.FC = () => {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [activeSearch, setActiveSearch] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const queryParam = searchParams.get("q") || "";
+  const [searchQuery, setSearchQuery] = useState(queryParam);
+  const [_, setActiveSearch] = useState("");
   const [selectedType, setSelectedType] = useState<string>("ALL");
   const [addedStatuses, setAddedStatuses] = useState<
     Record<string, LibraryStatus>
@@ -33,19 +35,29 @@ const Explore: React.FC = () => {
     "MANHWA",
     "KDRAMA",
   ];
+  // useEffect(() => {
+  //   const urlQuery = searchParams.get("q") || "";
+  //   setSearchQuery(urlQuery);
+  //   setActiveSearch(urlQuery);
+  // }, [searchParams]);
 
   useEffect(() => {
     const controller = new AbortController();
+
+    // 1. Read query directly from URL inside the effect
+    const urlQuery = searchParams.get("q") || "";
+    setSearchQuery(urlQuery); // Sync input box text
 
     const loadExploreData = async () => {
       setIsLoading(true);
       setLoadError(null);
 
       try {
-        const trimmedSearch = activeSearch.trim();
+        const trimmedSearch = urlQuery.trim();
         const query = trimmedSearch
           ? `?q=${encodeURIComponent(trimmedSearch)}`
           : "";
+
         const response = await fetch(`/api/explore${query}`, {
           signal: controller.signal,
         });
@@ -57,11 +69,13 @@ const Explore: React.FC = () => {
         }
 
         const payload: ExploreResponse = await response.json();
-        setExploreData(payload);
-      } catch (error) {
-        if (controller.signal.aborted) {
-          return;
+
+        if (!controller.signal.aborted) {
+          setExploreData(payload);
         }
+      } catch (error: any) {
+        // Ignore cancellations
+        if (error.name === "AbortError" || controller.signal.aborted) return;
 
         setLoadError(
           error instanceof Error
@@ -75,24 +89,22 @@ const Explore: React.FC = () => {
       }
     };
 
-    void loadExploreData();
+    loadExploreData().catch(() => {});
 
     return () => controller.abort();
-  }, [activeSearch]);
+  }, [searchParams]);
 
   const handleSearchSubmit = (event: React.SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     setActiveSearch(searchQuery);
+    setSearchParams({ q: searchQuery.trim() });
   };
 
-  const handleSaveItem = async (item: ExploreItem, action: LibraryStatus) => {
+  const handleSaveItem = async (item: ExploreItem) => {
     setSavingIds((prev) => ({ ...prev, [item.id]: true }));
 
     try {
-      const savedItem =
-        action === "COMPLETED"
-          ? await addItemToHistory(item)
-          : await addItemToWatchlist(item);
+      const savedItem = await addItemToLibrary(item);
 
       setAddedStatuses((prev) => ({ ...prev, [item.id]: savedItem.status }));
     } catch (error) {
@@ -147,8 +159,7 @@ const Explore: React.FC = () => {
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
           {filteredItems.map((item) => {
             const savedStatus = addedStatuses[item.id];
-            const isInWatchlist = Boolean(savedStatus);
-            const isInHistory = savedStatus === "COMPLETED";
+            const isInLibrary = Boolean(savedStatus);
             const isSaving = Boolean(savingIds[item.id]);
 
             return (
@@ -187,48 +198,27 @@ const Explore: React.FC = () => {
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => handleSaveItem(item, "PLAN_TO_WATCH")}
-                      disabled={isSaving || isInWatchlist}
-                      className={`w-full py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
-                        isInWatchlist
-                          ? "bg-emerald-500/10 text-emerald-500 cursor-default"
-                          : "bg-cyan-500 hover:bg-cyan-600 text-white shadow-sm"
-                      }`}
-                    >
-                      {isInWatchlist ? (
-                        <>
-                          <Check className="w-3.5 h-3.5" /> In Watchlist
-                        </>
-                      ) : (
-                        <>
-                          <BookmarkPlus className="w-3.5 h-3.5" /> Add to
-                          Watchlist
-                        </>
-                      )}
-                    </button>
-
-                    <button
-                      onClick={() => handleSaveItem(item, "COMPLETED")}
-                      disabled={isSaving || isInHistory}
-                      className={`w-full py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
-                        isInHistory
-                          ? "bg-emerald-500/10 text-emerald-500 cursor-default"
-                          : "bg-slate-900 hover:bg-slate-800 text-white shadow-sm dark:bg-slate-700 dark:hover:bg-slate-600"
-                      }`}
-                    >
-                      {isInHistory ? (
-                        <>
-                          <Check className="w-3.5 h-3.5" /> In History
-                        </>
-                      ) : (
-                        <>
-                          <PlayCircle className="w-3.5 h-3.5" /> Add to History
-                        </>
-                      )}
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => handleSaveItem(item)}
+                    disabled={isSaving || isInLibrary}
+                    className={`w-full py-2 px-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                      isInLibrary
+                        ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 cursor-default"
+                        : "bg-cyan-500 hover:bg-cyan-600 active:scale-95 text-white shadow-xs"
+                    } ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                  >
+                    {isInLibrary ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 shrink-0" />
+                        <span className="truncate">In Library</span>
+                      </>
+                    ) : (
+                      <>
+                        <BookmarkPlus className="w-3.5 h-3.5 shrink-0" />
+                        <span className="truncate">Add to Library</span>
+                      </>
+                    )}
+                  </button>
                 </div>
               </div>
             );
@@ -241,7 +231,7 @@ const Explore: React.FC = () => {
   const sections = [
     {
       title: "Movies & Series",
-      description: "Mixed OMDb results pulled from live backend searches.",
+      description: "Mixed movies and series of different genre.",
       items: exploreData?.moviesAndSeries ?? [],
     },
     {
