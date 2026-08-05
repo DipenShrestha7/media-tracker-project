@@ -26,6 +26,7 @@ export class LibraryEntry extends Model {
   declare completedAt: Date | null;
   declare readonly createdAt: Date;
   declare readonly updatedAt: Date;
+  declare userId: number;
 }
 
 if (sequelize) {
@@ -76,6 +77,15 @@ if (sequelize) {
       completedAt: {
         type: DataTypes.DATE,
         allowNull: true,
+      },
+      userId: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        references: {
+          model: "Logins",
+          key: "id",
+        },
+        onDelete: "CASCADE",
       },
     },
     {

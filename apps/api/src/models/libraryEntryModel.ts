@@ -30,6 +30,15 @@ if (sequelize) {
         type: DataTypes.STRING,
         allowNull: false,
       },
+      userId: {
+        type: DataTypes.UUID,
+        allowNull: false,
+        references: {
+          model: "Logins",
+          key: "id",
+        },
+        onDelete: "CASCADE",
+      },
       title: {
         type: DataTypes.STRING,
         allowNull: false,

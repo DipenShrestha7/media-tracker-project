@@ -29,13 +29,15 @@ function Navbar({
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
+    localStorage.removeItem("nexus_token");
     setUser(null);
     setIsDropdownOpen(false);
+    window.location.reload();
+    navigate("/");
   };
   useEffect(() => {
     const fetchUser = async () => {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("nexus_token");
       if (!token) {
         setUser(null);
         return;

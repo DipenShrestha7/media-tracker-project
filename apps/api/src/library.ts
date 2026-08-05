@@ -49,9 +49,12 @@ const toLibraryItem = (entry: LibraryEntry): LibraryItem => ({
 const upsertEntry = async (
   item: ExploreItem,
   nextStatus: LibraryStatus,
+  userId: string,
 ): Promise<LibraryItem> => {
   ensureDatabase();
-  const existing = await LibraryEntry.findByPk(item.id);
+  const existing = await LibraryEntry.findOne({
+    where: { id: item.id, userId },
+  });
   const resolvedStatus = existing
     ? promoteStatus(existing.status as LibraryStatus, nextStatus)
     : nextStatus;
@@ -77,6 +80,7 @@ const upsertEntry = async (
 
   const created = await LibraryEntry.create({
     id: item.id,
+    userId,
     externalId: item.externalId,
     title: item.title,
     type: item.type,
@@ -92,39 +96,28 @@ const upsertEntry = async (
   return toLibraryItem(created);
 };
 
-export const listLibraryItems = async (): Promise<LibraryItem[]> => {
+export const listLibraryItems = async (
+  userId: string,
+): Promise<LibraryItem[]> => {
   ensureDatabase();
   const entries = await LibraryEntry.findAll({
+    where: { userId },
     order: [["updatedAt", "DESC"]],
   });
 
   return entries.map(toLibraryItem);
 };
 
-export const listHistoryItems = async (): Promise<LibraryItem[]> => {
-  ensureDatabase();
-  const entries = await LibraryEntry.findAll({
-    where: { status: "COMPLETED" },
-    order: [["completedAt", "DESC"]],
-  });
-
-  return entries.map(toLibraryItem);
-};
-
-export const addToWatchlist = (item: ExploreItem) =>
-  upsertEntry(item, "PLAN_TO_WATCH");
-
-export const addToLibrary = addToWatchlist;
-
-export const addToHistory = (item: ExploreItem) =>
-  upsertEntry(item, "COMPLETED");
+export const addToLibrary = (item: ExploreItem, userId: string) =>
+  upsertEntry(item, "PLAN_TO_WATCH", userId);
 
 export const updateLibraryStatus = async (
   id: string,
   status: LibraryStatus,
+  userId: string,
 ): Promise<LibraryItem | null> => {
   ensureDatabase();
-  const entry = await LibraryEntry.findByPk(id);
+  const entry = await LibraryEntry.findOne({ where: { id, userId } });
 
   if (!entry) {
     return null;
@@ -138,8 +131,11 @@ export const updateLibraryStatus = async (
   return toLibraryItem(entry);
 };
 
-export const removeLibraryItem = async (id: string): Promise<boolean> => {
+export const removeLibraryItem = async (
+  id: string,
+  userId: string,
+): Promise<boolean> => {
   ensureDatabase();
-  const deletedCount = await LibraryEntry.destroy({ where: { id } });
+  const deletedCount = await LibraryEntry.destroy({ where: { id, userId } });
   return deletedCount > 0;
 };

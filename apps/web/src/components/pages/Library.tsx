@@ -48,6 +48,13 @@ const Library: React.FC = () => {
 
   useEffect(() => {
     const loadLibrary = async () => {
+      const token = localStorage.getItem("nexus_token");
+      if (!token) {
+        setLoadError("Please login to access library.");
+        setIsLoading(false);
+        return;
+      }
+
       setIsLoading(true);
       setLoadError(null);
 
@@ -186,18 +193,24 @@ const Library: React.FC = () => {
       </div>
 
       {isLoading ? (
-        <div className="text-center py-20 bg-slate-50 dark:bg-slate-900/50 rounded-3xl border border-dashed border-slate-200 dark:border-slate-800">
-          <p className="text-slate-500 dark:text-slate-400 text-sm">
-            Loading your library...
-          </p>
+        <div className="flex flex-col items-center justify-center py-10 px-4 bg-cyan-50/50 dark:bg-cyan-950/20 rounded-2xl border border-dashed border-cyan-200 dark:border-cyan-800/50">
+          <div className="flex items-center gap-3">
+            {/* Optional loading spinner */}
+            <div className="w-5 h-5 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+            <p className="text-base font-medium text-cyan-900 dark:text-cyan-200">
+              Loading your library...
+            </p>
+          </div>
         </div>
       ) : loadError ? (
-        <div className="text-center py-20 bg-rose-50 dark:bg-rose-950/50 rounded-3xl border border-dashed border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300">
-          <p className="text-sm">{loadError}</p>
+        <div className="flex flex-col items-center justify-center py-10 px-4 bg-cyan-500/10 dark:bg-cyan-950/30 rounded-2xl border border-dashed border-cyan-400/30 dark:border-cyan-500/30">
+          <p className="text-base sm:text-lg font-semibold text-cyan-800 dark:text-cyan-300 text-center">
+            {loadError}
+          </p>
         </div>
       ) : filteredItems.length === 0 ? (
-        <div className="text-center py-20 bg-slate-50 dark:bg-slate-900/50 rounded-3xl border border-dashed border-slate-200 dark:border-slate-800">
-          <p className="text-slate-500 dark:text-slate-400 text-sm">
+        <div className="flex flex-col items-center justify-center py-10 px-4 bg-slate-50 dark:bg-slate-900/40 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800">
+          <p className="text-base font-medium text-slate-600 dark:text-slate-400 text-center">
             No items match the current filters yet.
           </p>
         </div>

@@ -21,9 +21,9 @@ const loginModel = sequelize.define<UserAttributes>(
   "Login",
   {
     id: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
       primaryKey: true,
-      autoIncrement: true,
     },
     username: {
       type: DataTypes.STRING,

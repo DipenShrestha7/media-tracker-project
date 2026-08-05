@@ -63,7 +63,7 @@ function LoginModal({ isOpen, onClose, onLoginSuccess }: LoginModalProps) {
       const data = response.data;
 
       if (isLogin) {
-        localStorage.setItem("token", data.token);
+        localStorage.setItem("nexus_token", data.token);
         onLoginSuccess();
         setNotice(null);
         closeModal();
