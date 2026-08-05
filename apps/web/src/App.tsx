@@ -31,10 +31,14 @@ export default function App() {
         onClose={() => setIsLoginOpen(false)}
         onLoginSuccess={() => setAuthVersion((version) => version + 1)}
       />
+
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/homepage" element={<HomePage />} />
-        <Route path="/explore" element={<Explore />} />
+        <Route
+          path="/explore"
+          element={<Explore onOpenLogin={() => setIsLoginOpen(true)} />}
+        />
         <Route path="/library" element={<Library />} />
         <Route path="/assistant" element={<Assistant />} />
         <Route path="/about" element={<About />} />

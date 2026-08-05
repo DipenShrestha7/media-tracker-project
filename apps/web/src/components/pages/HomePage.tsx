@@ -64,7 +64,7 @@ const HomePage: React.FC = () => {
             Track. Explore. <br />
             Remember. <br />
             All in{" "}
-            <span className="text-purple-600 dark:text-purple-400">NEXUS.</span>
+            <span className="text-cyan-600 dark:text-cyan-400">NEXUS.</span>
           </h1>
 
           <p className="text-slate-600 dark:text-slate-400 text-base sm:text-lg mb-8 max-w-lg leading-relaxed">
@@ -74,7 +74,7 @@ const HomePage: React.FC = () => {
 
           <form
             onSubmit={handleSearch}
-            className="flex items-center p-2 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-lg shadow-purple-500/5 max-w-lg transition-all focus-within:border-purple-500"
+            className="flex items-center p-2 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-lg shadow-cyan-500/5 max-w-lg transition-all focus-within:border-cyan-500"
           >
             <span className="px-3 text-slate-400">🔍</span>
             <input
@@ -88,7 +88,7 @@ const HomePage: React.FC = () => {
             />
             <button
               type="submit"
-              className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-xl text-sm transition-colors shadow-md shadow-purple-600/20"
+              className="px-6 py-3 bg-cyan-600 hover:bg-cyan-700 text-white font-medium rounded-xl text-sm transition-colors shadow-md shadow-cyan-600/20"
             >
               Search
             </button>
@@ -151,7 +151,7 @@ const HomePage: React.FC = () => {
             </p>
           </div>
 
-          <button className="text-purple-600 dark:text-purple-400 font-semibold hover:text-purple-700 dark:hover:text-purple-300 text-sm flex items-center gap-1 transition-colors">
+          <button className="text-cyan-600 dark:text-cyan-400 font-semibold hover:text-cyan-700 dark:hover:text-cyan-300 text-sm flex items-center gap-1 transition-colors">
             <span>View All</span>
             <span className="text-xs">→</span>
           </button>
@@ -171,7 +171,7 @@ const HomePage: React.FC = () => {
           </div>
 
           <div className="flex justify-center items-center gap-2 mt-6">
-            <span className="w-6 h-2 rounded-full bg-purple-600 dark:bg-purple-500"></span>
+            <span className="w-6 h-2 rounded-full bg-cyan-600 dark:bg-cyan-500"></span>
             <span className="w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-700"></span>
             <span className="w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-700"></span>
             <span className="w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-700"></span>

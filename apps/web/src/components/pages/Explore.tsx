@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
+  X,
   Search,
   Star,
   Check,
@@ -12,8 +13,13 @@ import type { LibraryStatus } from "../../types/library";
 import { addItemToLibrary } from "../../lib/libraryApi";
 import { useSearchParams } from "react-router";
 
-const Explore: React.FC = () => {
+interface ExploreProps {
+  onOpenLogin: () => void;
+}
+
+const Explore: React.FC<ExploreProps> = ({ onOpenLogin }) => {
   const [searchParams, setSearchParams] = useSearchParams();
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
   const queryParam = searchParams.get("q") || "";
   const [searchQuery, setSearchQuery] = useState(queryParam);
   const [_, setActiveSearch] = useState("");
@@ -25,6 +31,7 @@ const Explore: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [savingIds, setSavingIds] = useState<Record<string, boolean>>({});
+  const [authErrorModal, setAuthErrorModal] = useState<string | null>(null);
 
   const mediaTypes = [
     "ALL",
@@ -35,18 +42,17 @@ const Explore: React.FC = () => {
     "MANHWA",
     "KDRAMA",
   ];
-  // useEffect(() => {
-  //   const urlQuery = searchParams.get("q") || "";
-  //   setSearchQuery(urlQuery);
-  //   setActiveSearch(urlQuery);
-  // }, [searchParams]);
+  useEffect(() => {
+    const token = localStorage.getItem("nexus_token");
+    setIsLoggedIn(Boolean(token));
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
 
     // 1. Read query directly from URL inside the effect
     const urlQuery = searchParams.get("q") || "";
-    setSearchQuery(urlQuery); // Sync input box text
+    setSearchQuery(urlQuery);
 
     const loadExploreData = async () => {
       setIsLoading(true);
@@ -199,7 +205,14 @@ const Explore: React.FC = () => {
                   </div>
 
                   <button
-                    onClick={() => handleSaveItem(item)}
+                    onClick={() => {
+                      if (!isLoggedIn) {
+                        setAuthErrorModal("Please login to access library.");
+                        return;
+                      }
+
+                      handleSaveItem(item);
+                    }}
                     disabled={isSaving || isInLibrary}
                     className={`w-full py-2 px-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                       isInLibrary
@@ -223,6 +236,51 @@ const Explore: React.FC = () => {
               </div>
             );
           })}
+          {authErrorModal && (
+            <div
+              className={`fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 backdrop-blur-sm p-4 transition-opacity duration-150 ${
+                authErrorModal
+                  ? "opacity-100 pointer-events-auto"
+                  : "opacity-0 pointer-events-none"
+              }`}
+            >
+              <div
+                className={`relative w-full max-w-md rounded-2xl border border-cyan-500/30 bg-slate-900 p-6 text-center shadow-2xl space-y-4 transition-transform duration-150 ${
+                  authErrorModal ? "scale-100" : "scale-95"
+                }`}
+              >
+                <button
+                  onClick={() => setAuthErrorModal(null)}
+                  className="absolute top-4 right-4 p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+
+                {/* Warning Icon */}
+                <div className="w-12 h-12 rounded-full bg-cyan-500/10 text-cyan-400 flex items-center justify-center mx-auto text-xl font-bold">
+                  !
+                </div>
+
+                <h3 className="text-xl font-bold text-white">Login Required</h3>
+                <p className="text-slate-300 text-base">
+                  {authErrorModal || "Please login to access library."}
+                </p>
+
+                <div className="pt-2">
+                  {/* Log In Button inside the overlay */}
+                  <button
+                    onClick={() => {
+                      setAuthErrorModal(null);
+                      onOpenLogin();
+                    }}
+                    className="w-full py-2.5 px-4 rounded-xl bg-cyan-500 text-slate-950 font-semibold hover:bg-cyan-400 transition cursor-pointer"
+                  >
+                    Log In
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </section>
     );

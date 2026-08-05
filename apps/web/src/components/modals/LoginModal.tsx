@@ -204,7 +204,7 @@ function LoginModal({ isOpen, onClose, onLoginSuccess }: LoginModalProps) {
           </button>
 
           <div className="pr-10">
-            <p className="text-sm font-semibold uppercase tracking-[0.25em] text-indigo-600 dark:text-indigo-400">
+            <p className="text-sm font-semibold uppercase tracking-[0.25em] text-cyan-600 dark:text-cyan-400">
               {mode === "login" ? "Welcome back" : "Welcome"}
             </p>
             <h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950 dark:text-white sm:text-3xl">
@@ -223,7 +223,7 @@ function LoginModal({ isOpen, onClose, onLoginSuccess }: LoginModalProps) {
                   placeholder="yourname"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/15 dark:border-slate-800 dark:bg-slate-900 dark:text-white dark:focus:border-indigo-400"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/15 dark:border-slate-800 dark:bg-slate-900 dark:text-white dark:focus:border-cyan-400"
                 />
               </div>
             )}
@@ -237,7 +237,7 @@ function LoginModal({ isOpen, onClose, onLoginSuccess }: LoginModalProps) {
                 placeholder="you@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/15 dark:border-slate-800 dark:bg-slate-900 dark:text-white dark:focus:border-indigo-400"
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/15 dark:border-slate-800 dark:bg-slate-900 dark:text-white dark:focus:border-cyan-400"
               />
             </div>
 
@@ -259,7 +259,7 @@ function LoginModal({ isOpen, onClose, onLoginSuccess }: LoginModalProps) {
                   placeholder="Enter your password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 pr-14 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/15 dark:border-slate-800 dark:bg-slate-900 dark:text-white dark:focus:border-indigo-400"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 pr-14 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/15 dark:border-slate-800 dark:bg-slate-900 dark:text-white dark:focus:border-cyan-400"
                 />
                 {mode === "login" ? (
                   <PasswordToggle
@@ -286,7 +286,7 @@ function LoginModal({ isOpen, onClose, onLoginSuccess }: LoginModalProps) {
                     placeholder="Confirm your password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 pr-14 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/15 dark:border-slate-800 dark:bg-slate-900 dark:text-white dark:focus:border-indigo-400"
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 pr-14 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/15 dark:border-slate-800 dark:bg-slate-900 dark:text-white dark:focus:border-cyan-400"
                   />
                   <PasswordToggle
                     isVisible={showConfirmPassword}
@@ -300,7 +300,7 @@ function LoginModal({ isOpen, onClose, onLoginSuccess }: LoginModalProps) {
 
             <button
               type="submit"
-              className="mt-2 w-full rounded-2xl bg-linear-to-r from-violet-700 via-fuchsia-600 to-purple-500 px-4 py-3.5 text-sm font-semibold text-white shadow-lg shadow-violet-500/25 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-violet-500/30"
+              className="mt-2 w-full rounded-2xl bg-linear-to-r from-cyan-700 via-cyan-600 to-cyan-400 px-4 py-3.5 text-sm font-semibold text-white shadow-lg shadow-cyan-500/25 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-cyan-500/30"
             >
               {mode === "login" ? "Sign In" : "Create Account"}
             </button>
@@ -312,7 +312,7 @@ function LoginModal({ isOpen, onClose, onLoginSuccess }: LoginModalProps) {
               <button
                 type="button"
                 onClick={() => setMode(mode === "login" ? "signup" : "login")}
-                className="font-semibold text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
+                className="font-semibold text-cyan-600 hover:text-cyan-500 dark:text-cyan-400 dark:hover:text-cyan-300"
               >
                 {mode === "login" ? "Sign up" : "Log in"}
               </button>

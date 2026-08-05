@@ -79,8 +79,8 @@ function Navbar({
 
   const getNavLinkClassName = ({ isActive }: { isActive: boolean }) =>
     isActive
-      ? "text-purple-600 dark:text-purple-400 font-bold"
-      : "hover:text-purple-600 dark:hover:text-purple-400";
+      ? "text-cyan-600 dark:text-cyan-400 font-bold"
+      : "hover:text-cyan-600 dark:hover:text-cyan-400";
 
   return (
     <nav
@@ -89,7 +89,7 @@ function Navbar({
     >
       <div
         onClick={() => navigate("/")}
-        className="flex items-center gap-2 font-black text-2xl tracking-wide text-purple-600 dark:text-purple-400 cursor-pointer"
+        className="flex items-center gap-2 font-black text-2xl tracking-wide text-cyan-600 dark:text-cyan-400 cursor-pointer"
       >
         <img className="w-35" src="nexuslogo.png" alt="logo-text" />
       </div>
@@ -145,9 +145,9 @@ function Navbar({
             {/* Trigger Button */}
             <button
               onClick={() => setIsDropdownOpen((prev) => !prev)}
-              className="flex items-center gap-2.5 px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 hover:border-purple-500/50 dark:hover:border-purple-500/50 transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-purple-500/30 shadow-xs"
+              className="flex items-center gap-2.5 px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 hover:border-cyan-500/50 dark:hover:border-cyan-500/50 transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-cyan-500/30 shadow-xs"
             >
-              <div className="w-7 h-7 rounded-full bg-linear-to-tr from-purple-600 to-indigo-500 flex items-center justify-center text-xs font-bold text-white shadow-sm">
+              <div className="w-7 h-7 rounded-full bg-linear-to-tr from-cyan-600 to-indigo-500 flex items-center justify-center text-xs font-bold text-white shadow-sm">
                 {user?.name?.charAt(0).toUpperCase() || "U"}
               </div>
               <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
@@ -178,9 +178,9 @@ function Navbar({
                   className="fixed inset-0 z-10"
                   onClick={() => setIsDropdownOpen(false)}
                 />
-                <div className="absolute right-0 mt-2.5 w-64 rounded-2xl bg-white dark:bg-slate-950/95 border border-slate-200 dark:border-slate-800 shadow-xl dark:shadow-2xl dark:shadow-purple-950/20 backdrop-blur-md z-20 overflow-hidden py-1.5 transition-all">
+                <div className="absolute right-0 mt-2.5 w-64 rounded-2xl bg-white dark:bg-slate-950/95 border border-slate-200 dark:border-slate-800 shadow-xl dark:shadow-2xl dark:shadow-cyan-950/20 backdrop-blur-md z-20 overflow-hidden py-1.5 transition-all">
                   <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800/80 flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-full bg-linear-to-tr from-purple-600 to-indigo-500 flex items-center justify-center text-sm font-bold text-white shrink-0 shadow-xs">
+                    <div className="w-9 h-9 rounded-full bg-linear-to-tr from-cyan-600 to-indigo-500 flex items-center justify-center text-sm font-bold text-white shrink-0 shadow-xs">
                       {user?.name?.charAt(0).toUpperCase() || "U"}
                     </div>
                     <div className="flex flex-col min-w-0">
@@ -224,10 +224,9 @@ function Navbar({
             )}
           </div>
         ) : (
-          /* Fallback Login Button when logged out */
           <button
             onClick={onOpenLogin}
-            className="px-6 py-2 rounded-xl border border-purple-600 text-purple-600 dark:text-purple-400 hover:bg-purple-600 hover:text-white dark:hover:text-white font-medium transition cursor-pointer"
+            className="px-6 py-2 rounded-xl border border-cyan-600 text-cyan-600 dark:text-cyan-400 hover:bg-cyan-600 hover:text-white dark:hover:text-white font-medium transition cursor-pointer"
           >
             Login
           </button>
