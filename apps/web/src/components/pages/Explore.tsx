@@ -22,7 +22,7 @@ const Explore: React.FC<ExploreProps> = ({ onOpenLogin }) => {
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
   const queryParam = searchParams.get("q") || "";
   const [searchQuery, setSearchQuery] = useState(queryParam);
-  const [_, setActiveSearch] = useState("");
+  const [, setActiveSearch] = useState("");
   const [selectedType, setSelectedType] = useState<string>("ALL");
   const [addedStatuses, setAddedStatuses] = useState<
     Record<string, LibraryStatus>
@@ -32,6 +32,8 @@ const Explore: React.FC<ExploreProps> = ({ onOpenLogin }) => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [savingIds, setSavingIds] = useState<Record<string, boolean>>({});
   const [authErrorModal, setAuthErrorModal] = useState<string | null>(null);
+  const [, setSearchResults] = useState<ExploreItem[] | null>(null);
+  const [hasSearched, setHasSearched] = useState(false);
 
   const mediaTypes = [
     "ALL",
@@ -46,13 +48,18 @@ const Explore: React.FC<ExploreProps> = ({ onOpenLogin }) => {
     const token = localStorage.getItem("nexus_token");
     setIsLoggedIn(Boolean(token));
   }, []);
+  // 1. Read query directly from URL inside the effect
+  const urlQuery = searchParams.get("q") || "";
+  useEffect(() => {
+    setSearchQuery(urlQuery);
+  }, [urlQuery]);
 
   useEffect(() => {
     const controller = new AbortController();
 
-    // 1. Read query directly from URL inside the effect
-    const urlQuery = searchParams.get("q") || "";
     setSearchQuery(urlQuery);
+    setActiveSearch(urlQuery);
+    setHasSearched(Boolean(urlQuery));
 
     const loadExploreData = async () => {
       setIsLoading(true);
@@ -101,9 +108,23 @@ const Explore: React.FC<ExploreProps> = ({ onOpenLogin }) => {
   }, [searchParams]);
 
   const handleSearchSubmit = (event: React.SubmitEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setActiveSearch(searchQuery);
-    setSearchParams({ q: searchQuery.trim() });
+    if (event) {
+      event.preventDefault();
+    }
+    const query = searchQuery.trim();
+
+    // 1. If query is empty, reset search state to bring back initial Explore Feed
+    if (!query) {
+      setActiveSearch("");
+      setHasSearched(false);
+      setSearchResults(null);
+      setSearchParams({});
+      return;
+    }
+    setIsLoading(true);
+    setHasSearched(true);
+    setActiveSearch(query);
+    setSearchParams({ q: query });
   };
 
   const handleSaveItem = async (item: ExploreItem) => {
@@ -124,15 +145,7 @@ const Explore: React.FC<ExploreProps> = ({ onOpenLogin }) => {
 
   const visibleItems = (items: ExploreItem[]) =>
     items.filter((item) => {
-      const matchesType = selectedType === "ALL" || item.type === selectedType;
-      const matchesQuery =
-        searchQuery.trim().length === 0 ||
-        item.title.toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
-        item.genre.some((entry) =>
-          entry.toLowerCase().includes(searchQuery.trim().toLowerCase()),
-        );
-
-      return matchesType && matchesQuery;
+      return selectedType === "ALL" || item.type === selectedType;
     });
 
   const renderSection = (
@@ -325,7 +338,19 @@ const Explore: React.FC<ExploreProps> = ({ onOpenLogin }) => {
           <input
             type="text"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              if (hasSearched) {
+                setHasSearched(false);
+              }
+              const newValue = e.target.value;
+              setSearchQuery(newValue);
+              if (newValue.trim() === "") {
+                setActiveSearch("");
+                setHasSearched(false);
+                setSearchParams({});
+              }
+            }}
             placeholder="Search for a movie, anime, drama, or genre..."
             className="w-full pl-12 pr-28 py-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition-all text-slate-900 dark:text-white shadow-sm"
           />

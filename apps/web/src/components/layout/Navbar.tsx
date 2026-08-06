@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { Sun, Moon } from "lucide-react";
 import { NavLink } from "react-router";
 import axios from "axios";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 
 interface NavbarProps {
   darkMode: boolean;
@@ -24,6 +24,7 @@ function Navbar({
   authVersion,
 }: NavbarProps) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [user, setUser] = useState<User | null>(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -82,6 +83,10 @@ function Navbar({
       ? "text-cyan-600 dark:text-cyan-400 font-bold"
       : "hover:text-cyan-600 dark:hover:text-cyan-400";
 
+  const currentQuery = searchParams.get("q");
+  const exploreTarget = currentQuery?.trim()
+    ? `/explore?q=${encodeURIComponent(currentQuery.trim())}`
+    : "/explore";
   return (
     <nav
       ref={dropdownRef}
@@ -101,7 +106,7 @@ function Navbar({
           </NavLink>
         </li>
         <li>
-          <NavLink to="/explore" className={getNavLinkClassName}>
+          <NavLink to={exploreTarget} className={getNavLinkClassName}>
             Explore
           </NavLink>
         </li>
@@ -169,11 +174,8 @@ function Navbar({
                 />
               </svg>
             </button>
-
-            {/* Dropdown Menu */}
             {isDropdownOpen && (
               <>
-                {/* Click Outside Overlay */}
                 <div
                   className="fixed inset-0 z-10"
                   onClick={() => setIsDropdownOpen(false)}
