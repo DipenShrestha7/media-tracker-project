@@ -1,3 +1,4 @@
+from typing import AsyncGenerator
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables.history import RunnableWithMessageHistory
@@ -6,6 +7,7 @@ from config import settings
 from services.memory import memory_service
 from services.vector_store import vector_service
 from tools.web_tool import web_search_tool
+from models.chat import StructuredRecommendationResponse
 
 
 class LLMService:
@@ -63,6 +65,67 @@ class LLMService:
             {"user_message": user_message, "context": retrieved_context}, config=config
         )
         return str(response["output"])
+
+    async def generate_stream(
+        self, user_message: str, session_id: str
+    ) -> AsyncGenerator[str, None]:
+        """Streams response tokens line-by-line using Server-Sent Events format."""
+        docs = vector_service.search_similar(user_message, k=2)
+        retrieved_context = (
+            "\n---\n".join([d.page_content for d in docs])
+            if docs
+            else "No specific local context."
+        )
+
+        prompt_template = ChatPromptTemplate.from_messages(
+            [
+                (
+                    "system",
+                    "You are Nexus AI. Provide helpful answers on media.\n\n"
+                    f"Context:\n{retrieved_context}",
+                ),
+                MessagesPlaceholder(variable_name="history"),
+                ("human", "{user_message}"),
+            ]
+        )
+
+        chain = prompt_template | self.llm
+
+        chain_with_history = RunnableWithMessageHistory(
+            chain,
+            memory_service.get_session_history,
+            input_messages_key="user_message",
+            history_messages_key="history",
+        )
+
+        config = {"configurable": {"session_id": session_id}}
+
+        async for chunk in chain_with_history.astream(
+            {"user_message": user_message}, config=config
+        ):
+            if chunk.content:
+                yield f"data: {chunk.content}\n\n"
+
+    async def generate_structured_recommendations(
+        self, query: str
+    ) -> StructuredRecommendationResponse:
+        """Uses OpenAI's structured outputs feature to return validated JSON matching Pydantic schema."""
+        structured_llm = self.llm.with_structured_output(
+            StructuredRecommendationResponse, method="function_calling"
+        )
+
+        prompt = ChatPromptTemplate.from_messages(
+            [
+                (
+                    "system",
+                    "You are an expert media recommendation engine. Return precise structured recommendations based on the user's criteria.",
+                ),
+                ("human", "{query}"),
+            ]
+        )
+
+        chain = prompt | structured_llm
+        return await chain.ainvoke({"query": query})
 
 
 llm_service = LLMService()
