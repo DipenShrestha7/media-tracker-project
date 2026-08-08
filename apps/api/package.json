@@ -17,6 +17,7 @@
     "@fastify/cors": "^11.3.0",
     "@fastify/jwt": "^10.2.1",
     "@node-rs/argon2": "^2.0.2",
+    "axios": "^1.19.0",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "fastify": "^5.11.0",
