@@ -7,28 +7,50 @@ import {
   type InferCreationAttributes,
 } from "sequelize";
 
-export interface ChatMessageAttributes extends Model<
-  InferAttributes<ChatMessageAttributes>,
-  InferCreationAttributes<ChatMessageAttributes>
+export class MessageEntry extends Model<
+  InferAttributes<MessageEntry>,
+  InferCreationAttributes<MessageEntry>
 > {
-  conversationId: string;
-  sender: "user" | "ai";
-  content: string;
+  declare message_id: string;
+  declare session_id: string;
+  declare sender: "user" | "ai";
+  declare content: string;
+  declare readonly createdAt: CreationOptional<Date>;
+  declare readonly updatedAt: CreationOptional<Date>;
 }
 
-const chatMessage = sequelize.define<ChatMessageAttributes>("ChatMessage", {
-  conversationId: {
-    type: DataTypes.UUID,
-    allowNull: false,
-  },
-  sender: {
-    type: DataTypes.STRING,
-    allowNull: false,
-  },
-  content: {
-    type: DataTypes.TEXT,
-    allowNull: false,
-  },
-});
-
-export default chatMessage;
+if (sequelize) {
+  MessageEntry.init(
+    {
+      message_id: {
+        type: DataTypes.UUID,
+        allowNull: false,
+        primaryKey: true,
+      },
+      session_id: {
+        type: DataTypes.UUID,
+        allowNull: false,
+      },
+      sender: {
+        type: DataTypes.STRING,
+        allowNull: false,
+      },
+      content: {
+        type: DataTypes.TEXT,
+        allowNull: false,
+      },
+      createdAt: {
+        type: DataTypes.DATE,
+      },
+      updatedAt: {
+        type: DataTypes.DATE,
+      },
+    },
+    {
+      sequelize,
+      tableName: "message_entries",
+      modelName: "MessageEntry",
+      timestamps: true,
+    },
+  );
+}

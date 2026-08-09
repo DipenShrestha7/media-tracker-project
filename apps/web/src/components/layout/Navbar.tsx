@@ -147,7 +147,6 @@ function Navbar({
         </button>
         {user && user.name ? (
           <div className="relative">
-            {/* Trigger Button */}
             <button
               onClick={() => setIsDropdownOpen((prev) => !prev)}
               className="flex items-center gap-2.5 px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 hover:border-cyan-500/50 dark:hover:border-cyan-500/50 transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-cyan-500/30 shadow-xs"

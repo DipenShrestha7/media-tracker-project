@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { hash, verify } from "@node-rs/argon2";
-import loginModel from "../models/loginModel.js";
+import { LoginEntry } from "../models/loginModel.js";
 import { generateToken, verifyToken } from "../utils/jose.js";
 import type { SignupBody, LoginBody } from "../types/auth.js";
 
@@ -46,7 +46,7 @@ async function loginRoutes(fastify: FastifyInstance) {
             .send({ message: "Password must be at least 8 characters long" });
         }
 
-        const existingUser = await loginModel.findOne({ where: { email } });
+        const existingUser = await LoginEntry.findOne({ where: { email } });
         if (existingUser) {
           fastify.log.warn(
             { email },
@@ -58,7 +58,7 @@ async function loginRoutes(fastify: FastifyInstance) {
         }
 
         const hashedPassword = await hash(password);
-        const newUser = await loginModel.create({
+        const newUser = await LoginEntry.create({
           username,
           email,
           password_hash: hashedPassword,
@@ -106,7 +106,7 @@ async function loginRoutes(fastify: FastifyInstance) {
             .send({ message: "Email and password are required" });
         }
 
-        const user = await loginModel.findOne({ where: { email } });
+        const user = await LoginEntry.findOne({ where: { email } });
 
         if (!user) {
           fastify.log.warn({ email }, "Login rejected: user not found");
@@ -157,7 +157,7 @@ async function loginRoutes(fastify: FastifyInstance) {
           .send({ message: "No token provided or invalid" });
       }
 
-      const user = await loginModel.findOne({
+      const user = await LoginEntry.findOne({
         where: { id: userId },
       });
 

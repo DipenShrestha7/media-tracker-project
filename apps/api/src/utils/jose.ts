@@ -3,7 +3,7 @@ import { SignJWT, jwtVerify } from "jose";
 const SECRET_KEY = new TextEncoder().encode(process.env.JOSE_SECRET_KEY);
 
 export async function generateToken(payload: {
-  userId: number;
+  userId: string;
   email: string;
 }) {
   return await new SignJWT(payload)

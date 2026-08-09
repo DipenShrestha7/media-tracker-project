@@ -1,11 +1,10 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Send, Bot, User, Sparkles, RefreshCw, Compass } from "lucide-react";
+import { Send, Bot, User, Sparkles, RefreshCw } from "lucide-react";
 
 interface ChatMessage {
   id: string;
   sender: "USER" | "AI";
   text: string;
-  timestamp: string;
 }
 
 const Assistant: React.FC = () => {
@@ -14,22 +13,11 @@ const Assistant: React.FC = () => {
       id: "m1",
       sender: "AI",
       text: "Hello! I'm your Media Assistant. Ask me to explain a ending, generate a recap, or give you cross-media recommendations based on your history!",
-      timestamp: new Date().toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
     },
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
-
-  const promptSuggestions = [
-    "Explain the ending of Inception",
-    "Give recap of Attack on Titan S1",
-    "Recommend anime based on sci-fi movies",
-    "Summarize Solo Leveling",
-  ];
 
   const scrollToBottom = () => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -47,26 +35,16 @@ const Assistant: React.FC = () => {
       id: Date.now().toString(),
       sender: "USER",
       text: textToSend,
-      timestamp: new Date().toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
     };
 
     setMessages((prev) => [...prev, userMsg]);
     if (!queryText) setInput("");
     setIsLoading(true);
-
-    // Mock API Response Call to Python FastAPI + LangChain backend
     setTimeout(() => {
       const aiMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         sender: "AI",
-        text: `Here is what I found for "${textToSend}":\n\n*Inception* centers around extracted dreams and subconscious projections. Cobb's spinning top leaves the reality of the resolution open to interpretation!`,
-        timestamp: new Date().toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
+        text: "",
       };
       setMessages((prev) => [...prev, aiMsg]);
       setIsLoading(false);
@@ -75,7 +53,6 @@ const Assistant: React.FC = () => {
 
   return (
     <div className="h-[calc(100vh-5rem)] max-w-5xl mx-auto p-4 flex flex-col">
-      {/* Header */}
       <div className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-800">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl bg-cyan-500/10 text-cyan-500 flex items-center justify-center">
@@ -124,13 +101,6 @@ const Assistant: React.FC = () => {
               }`}
             >
               <p className="whitespace-pre-line">{msg.text}</p>
-              <span
-                className={`block text-[10px] mt-2 opacity-60 text-right ${
-                  msg.sender === "USER" ? "text-white" : "text-slate-400"
-                }`}
-              >
-                {msg.timestamp}
-              </span>
             </div>
           </div>
         ))}
@@ -151,21 +121,6 @@ const Assistant: React.FC = () => {
         <div ref={chatEndRef} />
       </div>
 
-      {/* Suggested Quick Prompts */}
-      <div className="py-2 flex items-center gap-2 overflow-x-auto scrollbar-none mb-2">
-        <Compass className="w-4 h-4 text-slate-400 shrink-0" />
-        {promptSuggestions.map((prompt, i) => (
-          <button
-            key={i}
-            onClick={() => handleSend(prompt)}
-            className="text-xs whitespace-nowrap bg-slate-100 dark:bg-slate-800 hover:bg-cyan-500/10 hover:text-cyan-500 dark:hover:text-cyan-400 px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-700/50 transition-all shrink-0"
-          >
-            {prompt}
-          </button>
-        ))}
-      </div>
-
-      {/* Input Box */}
       <form
         onSubmit={(e) => {
           e.preventDefault();

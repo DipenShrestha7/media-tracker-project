@@ -82,7 +82,6 @@ function LoginModal({ isOpen, onClose, onLoginSuccess }: LoginModalProps) {
     } catch (error) {
       console.error("Error during request:", error);
 
-      // Axios throws for status codes outside 2xx (e.g., 400, 401, 500)
       if (axios.isAxiosError(error) && error.response) {
         if (isLogin) {
           setNotice({

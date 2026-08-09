@@ -1,11 +1,21 @@
 import sequelize from "../config/db.js";
-import { DataTypes, Model } from "sequelize";
+import {
+  DataTypes,
+  Model,
+  type CreationOptional,
+  type InferAttributes,
+  type InferCreationAttributes,
+} from "sequelize";
 
 export type LibraryStatus = "PLAN_TO_WATCH" | "WATCHING" | "COMPLETED";
 
-export class LibraryEntry extends Model {
+export class LibraryEntry extends Model<
+  InferAttributes<LibraryEntry>,
+  InferCreationAttributes<LibraryEntry>
+> {
   declare id: string;
   declare externalId: string;
+  declare userId: string;
   declare title: string;
   declare type: string;
   declare posterUrl: string;
@@ -15,8 +25,8 @@ export class LibraryEntry extends Model {
   declare source: "OMDB" | "ANILIST" | "TVMAZE";
   declare status: LibraryStatus;
   declare completedAt: Date | null;
-  declare readonly createdAt: Date;
-  declare readonly updatedAt: Date;
+  declare readonly createdAt: CreationOptional<Date>;
+  declare readonly updatedAt: CreationOptional<Date>;
 }
 
 if (sequelize) {
@@ -34,7 +44,7 @@ if (sequelize) {
         type: DataTypes.UUID,
         allowNull: false,
         references: {
-          model: "Logins",
+          model: "login_entries",
           key: "id",
         },
         onDelete: "CASCADE",
@@ -76,6 +86,12 @@ if (sequelize) {
       completedAt: {
         type: DataTypes.DATE,
         allowNull: true,
+      },
+      createdAt: {
+        type: DataTypes.DATE,
+      },
+      updatedAt: {
+        type: DataTypes.DATE,
       },
     },
     {

@@ -56,7 +56,6 @@ const getAuthUserId = async (
 
   try {
     const { payload } = await jwtVerify(token, JOSE_SECRET_KEY);
-    console.log("Decoded JWT Payload:", payload);
     const userId = (payload.userId || payload.id || payload.sub) as
       | string
       | undefined;
