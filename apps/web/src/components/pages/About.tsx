@@ -54,7 +54,7 @@ const About: React.FC = () => {
         </div>
       </div>
 
-      <div className="rounded-3xl bg-slate-900 text-white p-8 sm:p-12 mb-20 shadow-2xl relative overflow-hidden">
+      <div className="rounded-3xl bg-white text-black dark:bg-slate-900 dark:text-white p-8 sm:p-12 mb-20 shadow-2xl relative overflow-hidden">
         <div className="absolute top-0 right-0 -mt-12 -mr-12 w-64 h-64 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
 
         <div className="relative z-10">

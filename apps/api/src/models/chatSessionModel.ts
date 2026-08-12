@@ -11,7 +11,7 @@ export class SessionEntry extends Model<
   InferAttributes<SessionEntry>,
   InferCreationAttributes<SessionEntry>
 > {
-  declare session_id: string;
+  declare session_id: CreationOptional<string>;
   declare user_id: string;
   declare title: string;
   declare readonly createdAt: CreationOptional<Date>;
@@ -23,6 +23,7 @@ if (sequelize) {
     {
       session_id: {
         type: DataTypes.UUID,
+        defaultValue: DataTypes.UUIDV4,
         allowNull: false,
         primaryKey: true,
       },

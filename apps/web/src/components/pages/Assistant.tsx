@@ -1,15 +1,16 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
+import axios from "axios";
 import {
-  Send,
-  Sparkles,
   Plus,
   MoreVertical,
   Pencil,
   Trash2,
+  Send,
+  Sparkles,
 } from "lucide-react";
 
 interface ChatMessage {
@@ -22,90 +23,111 @@ interface ChatMessage {
 interface ChatSession {
   id: string;
   title: string;
-  updatedAt: number;
-  messages: ChatMessage[];
+  updatedAt?: number | string;
 }
 
-const API_BASE_URL = "http://localhost:8001/api";
-
-const createSessionId = () =>
-  `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-
-const createNewSession = (title = "New chat"): ChatSession => ({
-  id: createSessionId(),
-  title,
-  updatedAt: Date.now(),
-  messages: [],
-});
+const API_BASE_URL = `${import.meta.env.VITE_API_URL || "http://localhost:8001"}/api`;
 
 export default function Assistant() {
-  const [sessions, setSessions] = useState<ChatSession[]>(() => {
-    const storedSessions = localStorage.getItem("nexus-ai-sessions");
-
-    if (!storedSessions) {
-      return [createNewSession("New chat")];
-    }
-
-    try {
-      const parsed = JSON.parse(storedSessions) as ChatSession[];
-      return parsed.length > 0 ? parsed : [createNewSession("New chat")];
-    } catch {
-      return [createNewSession("New chat")];
-    }
-  });
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(() => {
-    const storedSessions = localStorage.getItem("nexus-ai-sessions");
-
-    if (!storedSessions) {
-      return "";
-    }
-
-    try {
-      const parsed = JSON.parse(storedSessions) as ChatSession[];
-      return parsed[0]?.id ?? "";
-    } catch {
-      return "";
-    }
-  });
   const [menuSessionId, setMenuSessionId] = useState<string | null>(null);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const sidebarRef = useRef<HTMLDivElement | null>(null);
 
-  const activeSession =
-    sessions.find((session) => session.id === activeSessionId) ??
-    sessions[0] ??
-    null;
-  const messages = activeSession?.messages ?? [];
+  const token = localStorage.getItem("nexus_token") || "";
+  const authHeaders = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  };
+
   const isEmpty = messages.length === 0;
 
   useEffect(() => {
-    localStorage.setItem("nexus-ai-sessions", JSON.stringify(sessions));
-  }, [sessions]);
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
+  // 1. Fetch Sessions List on Load
   useEffect(() => {
-    if (!activeSessionId && sessions.length > 0) {
-      setActiveSessionId(sessions[0].id);
+    const fetchSessions = async () => {
+      try {
+        const res = await axios.get(`${API_BASE_URL}/sessions`, {
+          headers: authHeaders,
+        });
+        if (!res.data) return;
+
+        const data = await res.data;
+        const rawSessions = Array.isArray(data) ? data : data.sessions || [];
+
+        const formattedSessions: ChatSession[] = rawSessions.map((s: any) => ({
+          id: s.session_id || s.id,
+          title: s.title || "New chat",
+          updatedAt: s.updated_at || s.updatedAt,
+        }));
+
+        setSessions(formattedSessions);
+
+        if (formattedSessions.length > 0 && !activeSessionId) {
+          setActiveSessionId(formattedSessions[0].id);
+        }
+      } catch (error) {
+        console.error("Failed to load sessions:", error);
+      }
+    };
+
+    fetchSessions();
+  }, []);
+
+  // 2. Fetch Messages when Active Session Changes
+  useEffect(() => {
+    if (!activeSessionId) {
+      setMessages([]);
+      return;
     }
 
-    if (
-      activeSessionId &&
-      !sessions.some((session) => session.id === activeSessionId)
-    ) {
-      setActiveSessionId(sessions[0]?.id ?? null);
-    }
-  }, [activeSessionId, sessions]);
+    const fetchMessages = async () => {
+      try {
+        const res = await axios.get(
+          `${API_BASE_URL}/sessions/${activeSessionId}/messages`,
+          {
+            headers: authHeaders,
+          },
+        );
+        if (!res.data) {
+          setMessages([]);
+          return;
+        }
 
+        const data = await res.data;
+        const rawMsgs = Array.isArray(data) ? data : data.messages || [];
+
+        const formattedMsgs: ChatMessage[] = rawMsgs.map((m: any) => ({
+          id: m.id || m.message_id || Date.now().toString(),
+          sender: m.sender === "USER" || m.role === "user" ? "USER" : "AI",
+          text: m.text || m.content || "",
+        }));
+
+        setMessages(formattedMsgs);
+      } catch (error) {
+        console.error("Failed to fetch session messages:", error);
+        setMessages([]);
+      }
+    };
+
+    fetchMessages();
+  }, [activeSessionId]);
+
+  // 3. Outside Click Handler for Action Menu
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
-
-      const clickedMenuButton = target.closest("[data-menu-button]");
-      const clickedMenuPanel = target.closest("[data-menu-panel]");
-
-      if (!clickedMenuButton && !clickedMenuPanel) {
+      if (
+        !target.closest("[data-menu-button]") &&
+        !target.closest("[data-menu-panel]")
+      ) {
         setMenuSessionId(null);
       }
     };
@@ -114,18 +136,40 @@ export default function Assistant() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  // 4. Create Session in DB
+  const createSession = async (title = "New chat"): Promise<string | null> => {
+    try {
+      const res = await axios.post(
+        `${API_BASE_URL}/sessions`,
+        { title },
+        { headers: authHeaders },
+      );
 
-  const createSession = (title = "New chat") => {
-    const newSession = createNewSession(title);
-    setSessions((prev) => [newSession, ...prev]);
-    setActiveSessionId(newSession.id);
-    setMenuSessionId(null);
-    return newSession.id;
+      if (!res.data) throw new Error("Failed to create session");
+
+      // res.data is already parsed JSON (no await needed)
+      const data = res.data;
+      const newSessionId = data.session_id || data.id;
+
+      const newSession: ChatSession = {
+        id: newSessionId,
+        title,
+        updatedAt: Date.now(),
+      };
+
+      setSessions((prev) => [newSession, ...prev]);
+      setActiveSessionId(newSessionId);
+      setMessages([]);
+      setMenuSessionId(null);
+
+      return newSessionId;
+    } catch (error) {
+      console.error("Error creating session:", error);
+      return null;
+    }
   };
 
+  // 5. Stream Decoder
   const readStreamResponse = async (
     response: Response,
     onTokenReceived: (token: string) => void,
@@ -133,9 +177,8 @@ export default function Assistant() {
     const reader = response.body?.getReader();
     const decoder = new TextDecoder("utf-8");
 
-    if (!reader) {
-      throw new Error("ReadableStream not supported on this response channel.");
-    }
+    if (!reader)
+      throw new Error("ReadableStream not supported on response channel.");
 
     let assemblyBuffer = "";
 
@@ -173,203 +216,146 @@ export default function Assistant() {
     }
   };
 
+  // 6. Send Message Handler
   const handleSend = async () => {
     const trimmedInput = input.trim();
     if (!trimmedInput || isLoading) return;
 
-    const token = localStorage.getItem("token") || "";
-
-    const sessionId = activeSessionId ?? createSession("New chat");
-    const userMsgId = Date.now().toString();
-    const aiMsgId = (Date.now() + 1).toString();
-
     const userMessage: ChatMessage = {
-      id: userMsgId,
+      id: Date.now().toString(),
       sender: "USER",
       text: trimmedInput,
     };
 
     const aiMessage: ChatMessage = {
-      id: aiMsgId,
+      id: (Date.now() + 1).toString(),
       sender: "AI",
       text: "",
       isStreaming: true,
     };
 
-    setSessions((prev) =>
-      prev.map((session) => {
-        if (session.id !== sessionId) return session;
-
-        const nextTitle =
-          session.title === "New chat" && session.messages.length === 0
-            ? trimmedInput.slice(0, 28) +
-              (trimmedInput.length > 28 ? "..." : "")
-            : session.title;
-
-        return {
-          ...session,
-          title: nextTitle,
-          updatedAt: Date.now(),
-          messages: [...session.messages, userMessage, aiMessage],
-        };
-      }),
-    );
-
-    setActiveSessionId(sessionId);
+    setMessages((prev) => [...prev, userMessage, aiMessage]);
     setInput("");
     setIsLoading(true);
-
     try {
       const response = await fetch(`${API_BASE_URL}/stream`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: authHeaders,
         body: JSON.stringify({
           message: trimmedInput,
-          sessionId: sessionId || undefined,
+          sessionId: activeSessionId,
         }),
       });
 
-      if (!response.ok) {
+      if (!response.ok)
         throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const newSessionId = response.headers.get("X-Session-ID");
-      if (newSessionId && !activeSessionId) {
-        setActiveSessionId(newSessionId);
-      }
 
       const onTokenReceived = (chunk: string) => {
-        setSessions((prev) =>
-          prev.map((session) => {
-            if (session.id !== sessionId) return session;
+        setMessages((prev) => {
+          const updated = [...prev];
+          const lastIdx = updated.length - 1;
 
-            const updatedMessages = [...session.messages];
-            const lastIndex = updatedMessages.length - 1;
-
-            if (lastIndex >= 0 && updatedMessages[lastIndex].sender === "AI") {
-              updatedMessages[lastIndex] = {
-                ...updatedMessages[lastIndex],
-                text: updatedMessages[lastIndex].text + chunk,
-              };
-            }
-
-            return {
-              ...session,
-              updatedAt: Date.now(),
-              messages: updatedMessages,
+          if (lastIdx >= 0 && updated[lastIdx].sender === "AI") {
+            updated[lastIdx] = {
+              ...updated[lastIdx],
+              text: updated[lastIdx].text + chunk,
             };
-          }),
-        );
+          }
+          return updated;
+        });
       };
 
       await readStreamResponse(response, onTokenReceived);
     } catch (error) {
       console.error("Streaming error:", error);
-      setSessions((prev) =>
-        prev.map((session) => {
-          if (session.id !== sessionId) return session;
-
-          const updatedMessages = [...session.messages];
-          const lastIndex = updatedMessages.length - 1;
-
-          if (lastIndex >= 0 && updatedMessages[lastIndex].sender === "AI") {
-            updatedMessages[lastIndex] = {
-              ...updatedMessages[lastIndex],
-              text:
-                updatedMessages[lastIndex].text +
-                "\n\n*[Error generating response. Please try again.]*",
-            };
-          }
-
-          return {
-            ...session,
-            updatedAt: Date.now(),
-            messages: updatedMessages,
+      setMessages((prev) => {
+        const updated = [...prev];
+        const lastIdx = updated.length - 1;
+        if (lastIdx >= 0 && updated[lastIdx].sender === "AI") {
+          updated[lastIdx] = {
+            ...updated[lastIdx],
+            text:
+              updated[lastIdx].text +
+              "\n\n*[Error generating response. Please try again.]*",
           };
-        }),
-      );
+        }
+        return updated;
+      });
     } finally {
       setIsLoading(false);
-      setSessions((prev) =>
-        prev.map((session) => {
-          if (session.id !== sessionId) return session;
-
-          const updatedMessages = [...session.messages];
-          const lastIndex = updatedMessages.length - 1;
-
-          if (lastIndex >= 0 && updatedMessages[lastIndex].sender === "AI") {
-            updatedMessages[lastIndex] = {
-              ...updatedMessages[lastIndex],
-              isStreaming: false,
-            };
-          }
-
-          return {
-            ...session,
-            updatedAt: Date.now(),
-            messages: updatedMessages,
+      setMessages((prev) => {
+        const updated = [...prev];
+        const lastIdx = updated.length - 1;
+        if (lastIdx >= 0 && updated[lastIdx].sender === "AI") {
+          updated[lastIdx] = {
+            ...updated[lastIdx],
+            isStreaming: false,
           };
-        }),
-      );
+        }
+        return updated;
+      });
     }
   };
 
-  const handleRenameSession = (sessionId: string) => {
-    const target = sessions.find((session) => session.id === sessionId);
+  // 7. Rename Handler
+  const handleRenameSession = async (sessionId: string) => {
+    const target = sessions.find((s) => s.id === sessionId);
     if (!target) return;
 
     const nextTitle = window.prompt("Rename this chat", target.title);
     if (!nextTitle || !nextTitle.trim()) return;
 
-    setSessions((prev) =>
-      prev.map((session) =>
-        session.id === sessionId
-          ? { ...session, title: nextTitle.trim(), updatedAt: Date.now() }
-          : session,
-      ),
-    );
-    setMenuSessionId(null);
+    try {
+      const res = await axios.patch(
+        `${API_BASE_URL}/sessions/${sessionId}`,
+        { title: nextTitle.trim() },
+        { headers: authHeaders },
+      );
+
+      if (res.data) {
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id === sessionId ? { ...s, title: nextTitle.trim() } : s,
+          ),
+        );
+      }
+    } catch (error) {
+      console.error("Failed to rename session:", error);
+    } finally {
+      setMenuSessionId(null);
+    }
   };
 
-  const handleDeleteSession = (sessionId: string) => {
-    setSessions((prev) => {
-      const nextSessions = prev.filter((session) => session.id !== sessionId);
-      if (nextSessions.length === 0) {
-        const freshSession = createNewSession("New chat");
-        setActiveSessionId(freshSession.id);
-        return [freshSession];
+  // 8. Delete Handler
+  const handleDeleteSession = async (sessionId: string) => {
+    try {
+      const res = await axios.delete(`${API_BASE_URL}/sessions/${sessionId}`, {
+        headers: authHeaders,
+      });
+
+      if (res.data) {
+        setSessions((prev) => {
+          const updated = prev.filter((s) => s.id !== sessionId);
+          if (activeSessionId === sessionId) {
+            setActiveSessionId(updated[0]?.id ?? null);
+          }
+          return updated;
+        });
       }
-
-      if (activeSessionId === sessionId) {
-        setActiveSessionId(nextSessions[0].id);
-      }
-
-      return nextSessions;
-    });
-
-    setMenuSessionId(null);
-  };
-
-  const handleSessionSelect = (sessionId: string) => {
-    setActiveSessionId(sessionId);
-    setMenuSessionId(null);
+    } catch (error) {
+      console.error("Failed to delete session:", error);
+    } finally {
+      setMenuSessionId(null);
+    }
   };
 
   return (
     <div className="h-[calc(100vh-72px)] w-full overflow-hidden bg-slate-50 dark:bg-slate-950">
       <div className="flex h-full w-full max-w-7xl mx-auto min-h-0">
-        <aside
-          ref={sidebarRef}
-          className="w-[330px] shrink-0 border-r border-slate-200 bg-white/80 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/80 p-4 min-h-0"
-        >
+        {/* SIDEBAR */}
+        <div className="w-82.5 shrink-0 border-r border-slate-200 bg-white/80 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/80 p-4 min-h-0">
           <div className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-800">
             <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-500 text-xs font-bold text-white shadow-sm">
-                N
-              </div>
               <span className="text-lg font-semibold text-slate-800 dark:text-slate-100">
                 Nexus AI
               </span>
@@ -406,18 +392,14 @@ export default function Assistant() {
                   >
                     <button
                       type="button"
-                      onClick={() => handleSessionSelect(session.id)}
+                      onClick={() => {
+                        setActiveSessionId(session.id);
+                        setMenuSessionId(null);
+                      }}
                       className="flex-1 min-w-0 text-left"
                     >
                       <div className="truncate text-sm font-medium">
                         {session.title || "New chat"}
-                      </div>
-                      <div className="mt-1 truncate text-[11px] text-slate-500 dark:text-slate-400">
-                        {session.messages.length > 0
-                          ? session.messages[
-                              session.messages.length - 1
-                            ].text.slice(0, 32) || "No messages yet"
-                          : "No messages yet"}
                       </div>
                     </button>
 
@@ -470,8 +452,9 @@ export default function Assistant() {
               })}
             </div>
           </div>
-        </aside>
+        </div>
 
+        {/* MAIN CHAT AREA */}
         <main className="flex-1 min-h-0 overflow-hidden">
           <div className="flex h-full w-full flex-col overflow-hidden max-w-4xl mx-auto px-4 py-4 min-h-0">
             {isEmpty ? (

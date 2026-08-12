@@ -4,7 +4,8 @@ import dotenv from "dotenv";
 import sequelize from "./config/db.js";
 import libraryRoutes from "./routes/libraryRoute.js";
 import loginRoutes from "./routes/loginRoute.js";
-import type { errors } from "jose";
+import messageRoutes from "./routes/messageRoute.js";
+import sessionRoutes from "./routes/sessionRoute.js";
 
 dotenv.config();
 
@@ -59,6 +60,8 @@ export const buildServer = () => {
   buildCorsPlugin(fastify);
   fastify.register(libraryRoutes, { prefix: "/api" });
   fastify.register(loginRoutes, { prefix: "/api" });
+  fastify.register(sessionRoutes, { prefix: "/api" });
+  fastify.register(messageRoutes, { prefix: "/api" });
   return fastify;
 };
 

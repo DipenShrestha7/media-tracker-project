@@ -18,7 +18,7 @@ export default function App() {
   }, [darkMode]);
 
   return (
-    <div className="flex h-screen flex-col bg-[#020b16] text-slate-100 font-sans transition-colors duration-300">
+    <div className="flex h-screen flex-col bg-slate-50 text-slate-950 dark:bg-[#020b16] dark:text-slate-100 font-sans transition-colors duration-300">
       <Navbar
         darkMode={darkMode}
         setDarkMode={setDarkMode}

@@ -3,6 +3,11 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
+  color-scheme: light;
+  background: #f8fafc;
+}
+
+html.dark {
   color-scheme: dark;
   background: #020b16;
 }
@@ -13,6 +18,12 @@ body,
   margin: 0;
   min-height: 100%;
   min-width: 100%;
+  background: #f8fafc;
+}
+
+html.dark,
+html.dark body,
+html.dark #root {
   background: #020b16;
 }
 
@@ -20,30 +31,11 @@ body {
   font-family: Inter, "Segoe UI", sans-serif;
   background:
     radial-gradient(circle at top, rgba(14, 116, 144, 0.22), transparent 28%),
-    #020b16;
-  color: #e2e8f0;
+    #f8fafc;
+  color: #0f172a;
 }
 
-* {
-  box-sizing: border-box;
-}
-
-:root {
-  color-scheme: dark;
-  background: #020b16;
-}
-
-html,
-body,
-#root {
-  margin: 0;
-  min-height: 100%;
-  min-width: 100%;
-  background: #020b16;
-}
-
-body {
-  font-family: Inter, "Segoe UI", sans-serif;
+html.dark body {
   background:
     radial-gradient(circle at top, rgba(14, 116, 144, 0.22), transparent 28%),
     #020b16;

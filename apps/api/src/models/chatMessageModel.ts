@@ -11,7 +11,7 @@ export class MessageEntry extends Model<
   InferAttributes<MessageEntry>,
   InferCreationAttributes<MessageEntry>
 > {
-  declare message_id: string;
+  declare message_id: CreationOptional<string>;
   declare session_id: string;
   declare sender: "user" | "ai";
   declare content: string;
@@ -24,6 +24,7 @@ if (sequelize) {
     {
       message_id: {
         type: DataTypes.UUID,
+        defaultValue: DataTypes.UUIDV4,
         allowNull: false,
         primaryKey: true,
       },
