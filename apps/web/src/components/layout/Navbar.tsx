@@ -117,7 +117,7 @@ function Navbar({
         </li>
         <li>
           <NavLink to="/assistant" className={getNavLinkClassName}>
-            AI Assistant
+            Nexus AI
           </NavLink>
         </li>
         <li>

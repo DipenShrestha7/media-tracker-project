@@ -18,7 +18,7 @@ export default function App() {
   }, [darkMode]);
 
   return (
-    <div className="min-h-screen bg-white dark:bg-black text-slate-900 dark:text-slate-100 font-sans transition-colors duration-300">
+    <div className="flex h-screen flex-col bg-[#020b16] text-slate-100 font-sans transition-colors duration-300">
       <Navbar
         darkMode={darkMode}
         setDarkMode={setDarkMode}
@@ -32,18 +32,20 @@ export default function App() {
         onLoginSuccess={() => setAuthVersion((version) => version + 1)}
       />
 
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/homepage" element={<HomePage />} />
-        <Route
-          path="/explore"
-          element={<Explore onOpenLogin={() => setIsLoginOpen(true)} />}
-        />
-        <Route path="/library" element={<Library />} />
-        <Route path="/assistant" element={<Assistant />} />
-        <Route path="/about" element={<About />} />
-        <Route path="*" element={<Navigate to="/homepage" replace />} />
-      </Routes>
+      <div className="flex-1 min-h-0">
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/homepage" element={<HomePage />} />
+          <Route
+            path="/explore"
+            element={<Explore onOpenLogin={() => setIsLoginOpen(true)} />}
+          />
+          <Route path="/library" element={<Library />} />
+          <Route path="/assistant" element={<Assistant />} />
+          <Route path="/about" element={<About />} />
+          <Route path="*" element={<Navigate to="/homepage" replace />} />
+        </Routes>
+      </div>
     </div>
   );
 }
