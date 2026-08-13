@@ -35,6 +35,9 @@ export default function Assistant() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [menuSessionId, setMenuSessionId] = useState<string | null>(null);
+  const [isRenameOpen, setIsRenameOpen] = useState(false);
+  const [renameSessionId, setRenameSessionId] = useState<string | null>(null);
+  const [newTitle, setNewTitle] = useState("");
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -104,11 +107,15 @@ export default function Assistant() {
         const data = await res.data;
         const rawMsgs = Array.isArray(data) ? data : data.messages || [];
 
-        const formattedMsgs: ChatMessage[] = rawMsgs.map((m: any) => ({
-          id: m.id || m.message_id || Date.now().toString(),
-          sender: m.sender === "USER" || m.role === "user" ? "USER" : "AI",
-          text: m.text || m.content || "",
-        }));
+        const formattedMsgs: ChatMessage[] = rawMsgs.map((m: any) => {
+          const currentSender = (m.sender || m.role || "").toLowerCase();
+
+          return {
+            id: m.id || m.message_id || Date.now().toString(),
+            sender: currentSender === "user" ? "USER" : "AI",
+            text: m.text || m.content || "",
+          };
+        });
 
         setMessages(formattedMsgs);
       } catch (error) {
@@ -136,33 +143,38 @@ export default function Assistant() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // 4. Create Session in DB
-  const createSession = async (title = "New chat"): Promise<string | null> => {
+  const createSession = async (userPrompt: string): Promise<string | null> => {
+    if (!token) {
+      console.error("No auth token found in localStorage.");
+      return null;
+    }
+
     try {
       const res = await axios.post(
         `${API_BASE_URL}/sessions`,
-        { title },
+        { firstPrompt: userPrompt },
         { headers: authHeaders },
       );
 
-      if (!res.data) throw new Error("Failed to create session");
+      if (!res.data) throw new Error("No response data from server");
 
-      // res.data is already parsed JSON (no await needed)
-      const data = res.data;
-      const newSessionId = data.session_id || data.id;
+      const newSessionId = res.data.session_id || res.data.id;
 
+      if (!newSessionId) {
+        console.error("Backend response is missing session_id:", res.data);
+        return null;
+      }
       const newSession: ChatSession = {
         id: newSessionId,
-        title,
+        title: res.data.title || userPrompt,
         updatedAt: Date.now(),
       };
 
       setSessions((prev) => [newSession, ...prev]);
       setActiveSessionId(newSessionId);
       setMessages([]);
-      setMenuSessionId(null);
 
-      return newSessionId;
+      return newSessionId; // Returns UUID string to caller
     } catch (error) {
       console.error("Error creating session:", error);
       return null;
@@ -188,30 +200,42 @@ export default function Assistant() {
 
       assemblyBuffer += decoder.decode(value, { stream: true });
       const lines = assemblyBuffer.split("\n");
+      // Preserve incomplete token chunk for the next loop iteration
       assemblyBuffer = lines.pop() ?? "";
 
       for (let i = 0; i < lines.length; i++) {
-        const currentLine = lines[i];
-
+        const currentLine = lines[i].trimEnd();
         if (
+          !currentLine ||
           currentLine.startsWith("LOG:") ||
           currentLine.startsWith("__LOG__:") ||
           currentLine.includes("Context verified successfully")
         ) {
           continue;
         }
-
-        onTokenReceived(currentLine + "\n");
+        if (currentLine.startsWith("data: ")) {
+          const content = currentLine.slice(6);
+          onTokenReceived(content);
+        } else if (currentLine.startsWith("data:")) {
+          const content = currentLine.slice(5);
+          onTokenReceived(content);
+        }
       }
     }
 
     if (assemblyBuffer.length > 0) {
+      let finalLine = assemblyBuffer.trimEnd();
       if (
-        !assemblyBuffer.startsWith("LOG:") &&
-        !assemblyBuffer.startsWith("__LOG__:") &&
-        !assemblyBuffer.includes("Context verified successfully")
+        finalLine &&
+        !finalLine.startsWith("LOG:") &&
+        !finalLine.startsWith("__LOG__:") &&
+        !finalLine.includes("Context verified successfully")
       ) {
-        onTokenReceived(assemblyBuffer);
+        if (finalLine.startsWith("data: ")) {
+          onTokenReceived(finalLine.slice(6));
+        } else if (finalLine.startsWith("data:")) {
+          onTokenReceived(finalLine.slice(5));
+        }
       }
     }
   };
@@ -220,6 +244,17 @@ export default function Assistant() {
   const handleSend = async () => {
     const trimmedInput = input.trim();
     if (!trimmedInput || isLoading) return;
+
+    let targetSessionId = activeSessionId;
+
+    if (!targetSessionId) {
+      targetSessionId = await createSession(trimmedInput);
+
+      if (!targetSessionId) {
+        console.error("Failed to create session. Aborting stream.");
+        return;
+      }
+    }
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -242,8 +277,8 @@ export default function Assistant() {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({
-          message: trimmedInput,
-          sessionId: activeSessionId,
+          sessionId: targetSessionId,
+          prompt: trimmedInput,
         }),
       });
 
@@ -298,31 +333,45 @@ export default function Assistant() {
   };
 
   // 7. Rename Handler
-  const handleRenameSession = async (sessionId: string) => {
-    const target = sessions.find((s) => s.id === sessionId);
-    if (!target) return;
+  // Triggers opening the modal overlay
+  const openRenameModal = (sessionId: string) => {
+    const session = sessions.find((s) => s.id === sessionId);
+    if (!session) return;
 
-    const nextTitle = window.prompt("Rename this chat", target.title);
-    if (!nextTitle || !nextTitle.trim()) return;
+    setRenameSessionId(sessionId);
+    setNewTitle(session.title || "");
+    setIsRenameOpen(true);
+    setMenuSessionId(null);
+  };
+
+  const closeRenameModal = () => {
+    setIsRenameOpen(false);
+    setRenameSessionId(null);
+    setNewTitle("");
+  };
+
+  // Submits the API PATCH request
+  const handleConfirmRename = async () => {
+    if (!renameSessionId || !newTitle.trim()) return;
 
     try {
-      const res = await axios.patch(
-        `${API_BASE_URL}/sessions/${sessionId}`,
-        { title: nextTitle.trim() },
-        { headers: authHeaders },
-      );
+      const res = await fetch(`${API_BASE_URL}/sessions/${renameSessionId}`, {
+        method: "PATCH",
+        headers: authHeaders,
+        body: JSON.stringify({ title: newTitle.trim() }),
+      });
 
-      if (res.data) {
+      if (res.ok) {
         setSessions((prev) =>
           prev.map((s) =>
-            s.id === sessionId ? { ...s, title: nextTitle.trim() } : s,
+            s.id === renameSessionId ? { ...s, title: newTitle.trim() } : s,
           ),
         );
       }
     } catch (error) {
       console.error("Failed to rename session:", error);
     } finally {
-      setMenuSessionId(null);
+      closeRenameModal();
     }
   };
 
@@ -349,10 +398,14 @@ export default function Assistant() {
     }
   };
 
+  const handleNewChatClick = () => {
+    setActiveSessionId(null);
+    setMessages([]);
+  };
+
   return (
     <div className="h-[calc(100vh-72px)] w-full overflow-hidden bg-slate-50 dark:bg-slate-950">
       <div className="flex h-full w-full max-w-7xl mx-auto min-h-0">
-        {/* SIDEBAR */}
         <div className="w-82.5 shrink-0 border-r border-slate-200 bg-white/80 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/80 p-4 min-h-0">
           <div className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-800">
             <div className="flex items-center gap-2">
@@ -363,7 +416,7 @@ export default function Assistant() {
 
             <button
               type="button"
-              onClick={() => createSession("New chat")}
+              onClick={handleNewChatClick}
               className="inline-flex items-center gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-2.5 py-2 text-sm font-medium text-cyan-700 transition hover:bg-cyan-100 dark:border-cyan-900 dark:bg-cyan-950/70 dark:text-cyan-200"
             >
               <Plus className="h-4 w-4" />
@@ -424,9 +477,10 @@ export default function Assistant() {
                         >
                           <button
                             type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              handleRenameSession(session.id);
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              openRenameModal(session.id);
                             }}
                             className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
                           >
@@ -454,7 +508,54 @@ export default function Assistant() {
           </div>
         </div>
 
-        {/* MAIN CHAT AREA */}
+        {isRenameOpen && renameSessionId && (
+          <div
+            data-rename-modal
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4"
+            onClick={closeRenameModal}
+          >
+            <div
+              className="w-full max-w-md rounded-3xl bg-white dark:bg-slate-900 p-6 shadow-2xl border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 animate-in fade-in zoom-in-95 duration-150"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h2 className="text-xl font-semibold mb-6 text-slate-900 dark:text-slate-100">
+                Rename this chat
+              </h2>
+
+              <input
+                type="text"
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleConfirmRename();
+                  if (e.key === "Escape") closeRenameModal();
+                }}
+                autoFocus
+                className="w-full rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-300 dark:border-slate-700 px-4 py-3 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 outline-none focus:border-cyan-500 dark:focus:border-cyan-500 transition-colors"
+              />
+
+              <div className="flex items-center justify-end gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={closeRenameModal}
+                  className="rounded-full px-5 py-2.5 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleConfirmRename}
+                  disabled={!newTitle.trim()}
+                  className="rounded-full bg-cyan-500 hover:bg-cyan-600 text-white px-5 py-2.5 text-sm font-medium disabled:opacity-40 transition-colors"
+                >
+                  Rename
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <main className="flex-1 min-h-0 overflow-hidden">
           <div className="flex h-full w-full flex-col overflow-hidden max-w-4xl mx-auto px-4 py-4 min-h-0">
             {isEmpty ? (

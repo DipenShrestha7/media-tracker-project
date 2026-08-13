@@ -82,8 +82,60 @@ async function sessionRoutes(fastify: FastifyInstance) {
     },
   );
 
+  fastify.patch(
+    "/sessions/:sessionId",
+    async (
+      request: FastifyRequest<{
+        Params: { sessionId: string };
+        Body: { title: string };
+      }>,
+      reply: FastifyReply,
+    ) => {
+      try {
+        const userId = await getUserIdFromAuthHeader(
+          request.headers.authorization,
+        );
+        if (!userId) {
+          return reply.status(401).send({ message: "Unauthorized" });
+        }
+
+        const { sessionId } = request.params;
+        const { title } = request.body || {};
+
+        if (!title || !title.trim()) {
+          return reply
+            .status(400)
+            .send({ message: "A valid title is required" });
+        }
+
+        const [updatedRowsCount] = await SessionEntry.update(
+          { title: title.trim() },
+          {
+            where: {
+              session_id: sessionId,
+              user_id: userId,
+            },
+          },
+        );
+
+        if (updatedRowsCount === 0) {
+          return reply.status(404).send({ message: "Session not found" });
+        }
+
+        const updatedSession = await SessionEntry.findOne({
+          where: { session_id: sessionId, user_id: userId },
+        });
+
+        return reply.send(updatedSession);
+      } catch (error) {
+        fastify.log.error(error);
+        return reply.status(500).send({ error: "Failed to rename session" });
+      }
+    },
+  );
+
   fastify.delete(
-    "/:sessionId",
+    "/sessions/:sessionId",
     async (
       request: FastifyRequest<{ Params: { sessionId: string } }>,
       reply: FastifyReply,

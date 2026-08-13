@@ -11,7 +11,6 @@ interface ChatRequestBody {
 }
 
 async function messageRoutes(fastify: FastifyInstance) {
-  // GET /messages/:sessionId - Retrieve history for a given session
   fastify.get(
     "/sessions/:sessionId/messages",
     async (
@@ -38,7 +37,9 @@ async function messageRoutes(fastify: FastifyInstance) {
       request: FastifyRequest<{ Body: ChatRequestBody }>,
       reply: FastifyReply,
     ) => {
-      const { sessionId, prompt } = request.body;
+      const body = (request.body as any) || {};
+      const sessionId = body.sessionId;
+      const prompt = body.prompt || body.message;
 
       if (!sessionId || !prompt) {
         return reply
@@ -47,20 +48,20 @@ async function messageRoutes(fastify: FastifyInstance) {
       }
 
       try {
-        // 1. Verify session exists
+        // 2. Verify session exists
         const session = await SessionEntry.findByPk(sessionId);
         if (!session) {
           return reply.status(404).send({ message: "Session not found" });
         }
 
-        // 2. Save User prompt to Node DB
+        // 3. Save User prompt to Node DB
         await MessageEntry.create({
           session_id: sessionId,
           sender: "user",
           content: prompt,
         });
 
-        // 3. Request streaming response from Python LangChain backend
+        // 4. Request streaming response from Python LangChain backend
         const pythonResponse = await axios.post(
           `${AI_SERVICE_URL}/chat/stream`,
           {
@@ -70,36 +71,60 @@ async function messageRoutes(fastify: FastifyInstance) {
           { responseType: "stream" },
         );
 
-        // 4. Set SSE Headers for client
+        // 5. Set SSE and CORS Headers for direct reply.raw writing
         reply.raw.setHeader("Content-Type", "text/event-stream");
         reply.raw.setHeader("Cache-Control", "no-cache");
         reply.raw.setHeader("Connection", "keep-alive");
+        reply.raw.setHeader("Access-Control-Allow-Origin", "*");
 
-        let accumulatedResponse = "";
+        let accumulatedText = "";
+        let streamBuffer = "";
 
-        // 5. Pipe chunks from Python stream to frontend while capturing text for DB
+        // 6. Pipe raw chunks to frontend while parsing clean text for DB
         pythonResponse.data.on("data", (chunk: Buffer) => {
           const chunkStr = chunk.toString("utf8");
-          accumulatedResponse += chunkStr;
           reply.raw.write(chunkStr);
+          streamBuffer += chunkStr;
+          const lines = streamBuffer.split("\n");
+          streamBuffer = lines.pop() ?? "";
+
+          for (const line of lines) {
+            const trimmedLine = line.trimEnd();
+
+            if (trimmedLine.startsWith("data: ")) {
+              accumulatedText += trimmedLine.slice(6);
+            } else if (trimmedLine.startsWith("data:")) {
+              accumulatedText += trimmedLine.slice(5);
+            }
+          }
         });
 
         pythonResponse.data.on("end", async () => {
-          // 6. Save complete Assistant output to Node DB when stream ends
+          // 7. Save clean accumulated text to DB
           try {
+            // Fall back to chunk string if SSE prefixes weren't present
+            if (streamBuffer.length > 0) {
+              const trimmedLine = streamBuffer.trimEnd();
+              if (trimmedLine.startsWith("data: ")) {
+                accumulatedText += trimmedLine.slice(6);
+              } else if (trimmedLine.startsWith("data:")) {
+                accumulatedText += trimmedLine.slice(5);
+              }
+            }
+
             await MessageEntry.create({
               session_id: sessionId,
               sender: "ai",
-              content: accumulatedResponse,
+              content: accumulatedText,
             });
           } catch (dbError) {
-            fastify.log.error(dbError, ": Failed to save assistant message:");
+            fastify.log.error(dbError, "Failed to save assistant message");
           }
           reply.raw.end();
         });
 
         pythonResponse.data.on("error", (err: Error) => {
-          fastify.log.error(err, ": Python stream error");
+          fastify.log.error(err, "Python stream error");
           reply.raw.end();
         });
       } catch (error) {
