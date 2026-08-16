@@ -54,7 +54,7 @@ async function messageRoutes(fastify: FastifyInstance) {
           return reply.status(404).send({ message: "Session not found" });
         }
 
-        // 3. Save User prompt to Node DB
+        //3. Always save user message FIRST so DB order is correct for the next turn
         await MessageEntry.create({
           session_id: sessionId,
           sender: "user",
@@ -62,20 +62,45 @@ async function messageRoutes(fastify: FastifyInstance) {
         });
 
         // 4. Request streaming response from Python LangChain backend
+
+        // 1. Fetch history from DB
+        const history = await MessageEntry.findAll({
+          where: { session_id: sessionId },
+          order: [["createdAt", "DESC"]],
+          limit: 6,
+        });
+
+        // 2. Format history array (oldest to newest)
+        const formattedHistory = history.reverse().map((msg) => ({
+          role: msg.sender.toLowerCase() === "user" ? "user" : "assistant",
+          content: msg.content,
+        }));
+
+        // 3. The user message was saved before the history fetch, so formattedHistory
+        //    already contains it as the last item — no need to append again.
+        const payload = [...formattedHistory];
+
+        // 4. Send request matching updated Python schema
         const pythonResponse = await axios.post(
           `${AI_SERVICE_URL}/chat/stream`,
           {
-            message: prompt,
+            messages: payload, // Changed key to 'messages'
             conversation_id: sessionId,
           },
           { responseType: "stream" },
         );
 
         // 5. Set SSE and CORS Headers for direct reply.raw writing
-        reply.raw.setHeader("Content-Type", "text/event-stream");
-        reply.raw.setHeader("Cache-Control", "no-cache");
-        reply.raw.setHeader("Connection", "keep-alive");
-        reply.raw.setHeader("Access-Control-Allow-Origin", "*");
+        // hijack() is REQUIRED: tells Fastify to release socket ownership so
+        // manual reply.raw.write() calls flush immediately instead of buffering.
+        reply.hijack();
+        reply.raw.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+          "Access-Control-Allow-Origin": "*",
+          "X-Accel-Buffering": "no",
+        });
 
         let accumulatedText = "";
         let streamBuffer = "";
@@ -92,23 +117,23 @@ async function messageRoutes(fastify: FastifyInstance) {
             const trimmedLine = line.trimEnd();
 
             if (trimmedLine.startsWith("data: ")) {
-              accumulatedText += trimmedLine.slice(6);
+              accumulatedText += trimmedLine.slice(6).replace(/\\n/g, "\n");
             } else if (trimmedLine.startsWith("data:")) {
-              accumulatedText += trimmedLine.slice(5);
+              accumulatedText += trimmedLine.slice(5).replace(/\\n/g, "\n");
             }
           }
         });
 
         pythonResponse.data.on("end", async () => {
-          // 7. Save clean accumulated text to DB
+          // 7. Save user prompt then AI response to DB (order matters for next turn's history)
           try {
-            // Fall back to chunk string if SSE prefixes weren't present
+            // Flush any remaining buffered SSE data
             if (streamBuffer.length > 0) {
               const trimmedLine = streamBuffer.trimEnd();
               if (trimmedLine.startsWith("data: ")) {
-                accumulatedText += trimmedLine.slice(6);
+                accumulatedText += trimmedLine.slice(6).replace(/\\n/g, "\n");
               } else if (trimmedLine.startsWith("data:")) {
-                accumulatedText += trimmedLine.slice(5);
+                accumulatedText += trimmedLine.slice(5).replace(/\\n/g, "\n");
               }
             }
 
@@ -118,7 +143,7 @@ async function messageRoutes(fastify: FastifyInstance) {
               content: accumulatedText,
             });
           } catch (dbError) {
-            fastify.log.error(dbError, "Failed to save assistant message");
+            fastify.log.error(dbError, "Failed to save messages to DB");
           }
           reply.raw.end();
         });

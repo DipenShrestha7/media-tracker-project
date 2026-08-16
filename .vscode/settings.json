@@ -1,3 +1,36 @@
 {
-  "python-envs.defaultEnvManager": "ms-python.python:system"
+  "python-envs.defaultEnvManager": "ms-python.python:system",
+  "python.defaultInterpreterPath": "C:/Coding/media-tracker/apps/ai_service/venv/Scripts/python.exe",
+  "workbench.iconTheme": "material-icon-theme",
+  "git.ignoreMissingGitWarning": true,
+  "terminal.integrated.fontLigatures.enabled": true,
+  "terminal.integrated.fontFamily": "JetBrains Mono, monospace",
+  "editor.formatOnPaste": true,
+  "editor.fontFamily": "JetBrains Mono, Consolas, 'Courier New', monospace",
+  "editor.fontLigatures": true,
+  "notebook.defaultFormatter": "esbenp.prettier-vscode",
+  "chat.editor.wordWrap": "on",
+  "python.createEnvironment.trigger": "off",
+  "editor.wordWrap": "on",
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.formatOnSave": true,
+  "[java]": {
+    "editor.defaultFormatter": "redhat.java"
+  },
+  "editor.quickSuggestionsDelay": 0,
+  "editor.quickSuggestions": {
+    "other": "on",
+    "comments": "off",
+    "strings": "on"
+  },
+  "files.associations": {
+    "*.css": "tailwindcss"
+  },
+  "workbench.editorAssociations": {
+    "*.xlsx": "default"
+  },
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.black-formatter"
+  },
+  "diffEditor.ignoreTrimWhitespace": false
 }

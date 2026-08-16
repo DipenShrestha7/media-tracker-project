@@ -32,7 +32,7 @@ async def chat_stream_endpoint(request: ChatRequest):
     """Returns Server-Sent Events (SSE) stream for real-time frontend rendering."""
     conv_id = request.conversation_id or str(uuid.uuid4())
     return StreamingResponse(
-        llm_service.generate_stream(user_message=request.message, session_id=conv_id),
+        llm_service.generate_stream(user_message=request.messages, session_id=conv_id),
         media_type="text/event-stream",
     )
 

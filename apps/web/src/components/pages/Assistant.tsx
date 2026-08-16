@@ -4,6 +4,7 @@ import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
 import axios from "axios";
+import { useNavigate } from "react-router";
 import {
   Plus,
   MoreVertical,
@@ -29,11 +30,14 @@ interface ChatSession {
 const API_BASE_URL = `${import.meta.env.VITE_API_URL || "http://localhost:8001"}/api`;
 
 export default function Assistant() {
+  const navigate = useNavigate();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [hasStartedStreaming, setHasStartedStreaming] = useState(false);
   const [menuSessionId, setMenuSessionId] = useState<string | null>(null);
   const [isRenameOpen, setIsRenameOpen] = useState(false);
   const [renameSessionId, setRenameSessionId] = useState<string | null>(null);
@@ -84,47 +88,48 @@ export default function Assistant() {
     fetchSessions();
   }, []);
 
-  // 2. Fetch Messages when Active Session Changes
-  useEffect(() => {
-    if (!activeSessionId) {
+  const fetchMessagesForSession = async (sessionId: string | null) => {
+    if (!sessionId) {
       setMessages([]);
       return;
     }
 
-    const fetchMessages = async () => {
-      try {
-        const res = await axios.get(
-          `${API_BASE_URL}/sessions/${activeSessionId}/messages`,
-          {
-            headers: authHeaders,
-          },
-        );
-        if (!res.data) {
-          setMessages([]);
-          return;
-        }
-
-        const data = await res.data;
-        const rawMsgs = Array.isArray(data) ? data : data.messages || [];
-
-        const formattedMsgs: ChatMessage[] = rawMsgs.map((m: any) => {
-          const currentSender = (m.sender || m.role || "").toLowerCase();
-
-          return {
-            id: m.id || m.message_id || Date.now().toString(),
-            sender: currentSender === "user" ? "USER" : "AI",
-            text: m.text || m.content || "",
-          };
-        });
-
-        setMessages(formattedMsgs);
-      } catch (error) {
-        console.error("Failed to fetch session messages:", error);
+    try {
+      const res = await axios.get(
+        `${API_BASE_URL}/sessions/${sessionId}/messages`,
+        {
+          headers: authHeaders,
+        },
+      );
+      if (!res.data) {
         setMessages([]);
+        return;
       }
-    };
 
-    fetchMessages();
+      const rawMsgs = Array.isArray(res.data)
+        ? res.data
+        : res.data.messages || [];
+
+      const formattedMsgs: ChatMessage[] = rawMsgs.map((m: any) => {
+        const currentSender = (m.sender || m.role || "").toLowerCase();
+
+        return {
+          id: m.id || m.message_id || Date.now().toString(),
+          sender: currentSender === "user" ? "USER" : "AI",
+          text: m.text || m.content || "",
+        };
+      });
+
+      setMessages(formattedMsgs);
+    } catch (error) {
+      console.error("Failed to fetch session messages:", error);
+      setMessages([]);
+    }
+  };
+
+  // 2. Fetch Messages when Active Session Changes
+  useEffect(() => {
+    void fetchMessagesForSession(activeSessionId);
   }, [activeSessionId]);
 
   // 3. Outside Click Handler for Action Menu
@@ -172,9 +177,8 @@ export default function Assistant() {
 
       setSessions((prev) => [newSession, ...prev]);
       setActiveSessionId(newSessionId);
-      setMessages([]);
 
-      return newSessionId; // Returns UUID string to caller
+      return newSessionId;
     } catch (error) {
       console.error("Error creating session:", error);
       return null;
@@ -199,8 +203,7 @@ export default function Assistant() {
       if (done) break;
 
       assemblyBuffer += decoder.decode(value, { stream: true });
-      const lines = assemblyBuffer.split("\n");
-      // Preserve incomplete token chunk for the next loop iteration
+      const lines = assemblyBuffer.split(/\r?\n/);
       assemblyBuffer = lines.pop() ?? "";
 
       for (let i = 0; i < lines.length; i++) {
@@ -213,18 +216,17 @@ export default function Assistant() {
         ) {
           continue;
         }
+
         if (currentLine.startsWith("data: ")) {
-          const content = currentLine.slice(6);
-          onTokenReceived(content);
+          onTokenReceived(currentLine.slice(6).replace(/\\n/g, "\n"));
         } else if (currentLine.startsWith("data:")) {
-          const content = currentLine.slice(5);
-          onTokenReceived(content);
+          onTokenReceived(currentLine.slice(5).replace(/\\n/g, "\n"));
         }
       }
     }
 
     if (assemblyBuffer.length > 0) {
-      let finalLine = assemblyBuffer.trimEnd();
+      const finalLine = assemblyBuffer.trimEnd();
       if (
         finalLine &&
         !finalLine.startsWith("LOG:") &&
@@ -232,9 +234,9 @@ export default function Assistant() {
         !finalLine.includes("Context verified successfully")
       ) {
         if (finalLine.startsWith("data: ")) {
-          onTokenReceived(finalLine.slice(6));
+          onTokenReceived(finalLine.slice(6).replace(/\\n/g, "\n"));
         } else if (finalLine.startsWith("data:")) {
-          onTokenReceived(finalLine.slice(5));
+          onTokenReceived(finalLine.slice(5).replace(/\\n/g, "\n"));
         }
       }
     }
@@ -242,19 +244,13 @@ export default function Assistant() {
 
   // 6. Send Message Handler
   const handleSend = async () => {
+    if (!token) {
+      window.alert(
+        "You are not logged in. Please log in to use the assistant.",
+      );
+    }
     const trimmedInput = input.trim();
     if (!trimmedInput || isLoading) return;
-
-    let targetSessionId = activeSessionId;
-
-    if (!targetSessionId) {
-      targetSessionId = await createSession(trimmedInput);
-
-      if (!targetSessionId) {
-        console.error("Failed to create session. Aborting stream.");
-        return;
-      }
-    }
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -272,6 +268,24 @@ export default function Assistant() {
     setMessages((prev) => [...prev, userMessage, aiMessage]);
     setInput("");
     setIsLoading(true);
+    setIsProcessing(true);
+    setHasStartedStreaming(false);
+
+    let targetSessionId = activeSessionId;
+
+    if (!targetSessionId) {
+      targetSessionId = await createSession(trimmedInput);
+
+      if (!targetSessionId) {
+        console.error("Failed to create session. Aborting stream.");
+        setMessages((prev) =>
+          prev.filter((m) => m.id !== userMessage.id && m.id !== aiMessage.id),
+        );
+        setIsLoading(false);
+        setIsProcessing(false);
+        return;
+      }
+    }
     try {
       const response = await fetch(`${API_BASE_URL}/stream`, {
         method: "POST",
@@ -286,6 +300,11 @@ export default function Assistant() {
         throw new Error(`HTTP error! status: ${response.status}`);
 
       const onTokenReceived = (chunk: string) => {
+        if (chunk && chunk.trim()) {
+          setHasStartedStreaming(true);
+          setIsProcessing(false);
+        }
+
         setMessages((prev) => {
           const updated = [...prev];
           const lastIdx = updated.length - 1;
@@ -318,6 +337,8 @@ export default function Assistant() {
       });
     } finally {
       setIsLoading(false);
+      setIsProcessing(false);
+      setHasStartedStreaming(false);
       setMessages((prev) => {
         const updated = [...prev];
         const lastIdx = updated.length - 1;
@@ -417,10 +438,10 @@ export default function Assistant() {
             <button
               type="button"
               onClick={handleNewChatClick}
-              className="inline-flex items-center gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-2.5 py-2 text-sm font-medium text-cyan-700 transition hover:bg-cyan-100 dark:border-cyan-900 dark:bg-cyan-950/70 dark:text-cyan-200"
+              className="inline-flex items-center justify-between gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-2 py-1.5 text-sm font-medium text-cyan-700 transition hover:bg-cyan-100 dark:border-cyan-900 dark:bg-cyan-950/70 dark:text-white"
             >
               <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">New chat</span>
+              <span className="hidden sm:inline">New</span>
             </button>
           </div>
 
@@ -437,10 +458,10 @@ export default function Assistant() {
                 return (
                   <div
                     key={session.id}
-                    className={`group relative flex items-center gap-2 rounded-2xl border px-3 py-2 transition ${
+                    className={`group relative flex items-center gap-2 rounded-2xl px-2.5 py-1 transition ${
                       isActive
-                        ? "border-cyan-200 bg-cyan-50 text-cyan-900 shadow-sm dark:border-cyan-900 dark:bg-cyan-950/70 dark:text-cyan-100"
-                        : "border-transparent bg-slate-100/80 text-slate-700 hover:border-slate-200 hover:bg-slate-100 dark:bg-slate-800/70 dark:text-slate-200 dark:hover:border-slate-700"
+                        ? "bg-cyan-500 text-white shadow-sm dark:bg-cyan-950/70 dark:text-cyan-100"
+                        : "text-slate-700 hover:bg-cyan-100 dark:text-slate-200 dark:hover:bg-slate-800/60"
                     }`}
                   >
                     <button
@@ -492,6 +513,7 @@ export default function Assistant() {
                             onClick={(event) => {
                               event.stopPropagation();
                               handleDeleteSession(session.id);
+                              navigate("/assistant");
                             }}
                             className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-rose-600 transition hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
                           >
@@ -590,7 +612,10 @@ export default function Assistant() {
             ) : (
               <>
                 <div className="flex-1 overflow-y-auto py-6 space-y-4 pr-2">
-                  {messages.map((msg) => (
+                  {messages.map((msg) => {
+                    // Don't render an empty AI bubble while waiting for first token
+                    if (msg.sender === "AI" && msg.isStreaming && !msg.text) return null;
+                    return (
                     <div
                       key={msg.id}
                       className={`flex items-start gap-3 ${
@@ -601,7 +626,7 @@ export default function Assistant() {
                         className={`max-w-[85%] rounded-2xl p-4 text-sm leading-relaxed ${
                           msg.sender === "USER"
                             ? "bg-cyan-500 text-white rounded-tr-none"
-                            : "bg-slate-100 text-slate-900 rounded-tl-none border border-slate-200 dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700/50"
+                            : "bg-slate-100 text-black rounded-tl-none border border-slate-200 dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700/50"
                         }`}
                       >
                         {msg.sender === "USER" ? (
@@ -687,29 +712,20 @@ export default function Assistant() {
                             {msg.text}
                           </ReactMarkdown>
                         )}
-
-                        {msg.isStreaming && (
-                          <span className="animate-pulse font-bold ml-1 text-cyan-400">
-                            ▌
-                          </span>
-                        )}
                       </div>
                     </div>
-                  ))}
+                  ); })}
 
-                  {isLoading &&
-                    !messages.some(
-                      (m) => m.isStreaming && m.text.length > 0,
-                    ) && (
-                      <div className="flex items-center gap-3">
-                        <div className="bg-slate-100 dark:bg-slate-800 p-4 rounded-2xl rounded-tl-none flex items-center gap-2">
-                          <Sparkles className="w-4 h-4 text-cyan-500 animate-spin" />
-                          <span className="text-xs text-slate-500 dark:text-slate-400">
-                            Searching vector DB & web...
-                          </span>
-                        </div>
+                  {isProcessing && !hasStartedStreaming && (
+                    <div className="flex items-center gap-3">
+                      <div className="bg-slate-100 dark:bg-slate-800 p-4 rounded-2xl rounded-tl-none flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-cyan-500 animate-spin" />
+                        <span className="text-xs text-slate-500 dark:text-slate-400">
+                          Searching...
+                        </span>
                       </div>
-                    )}
+                    </div>
+                  )}
                   <div ref={chatEndRef} />
                 </div>
 

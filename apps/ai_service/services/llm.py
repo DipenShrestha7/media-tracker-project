@@ -1,10 +1,9 @@
 from datetime import datetime
-from typing import AsyncGenerator
+import asyncio
+from typing import AsyncGenerator, List
 
-from langchain.agents import create_agent
-from langchain_community.tools.tavily_search import TavilySearchResults
-from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain_tavily import TavilySearch
+from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langchain_openai import ChatOpenAI
 
 from config import settings
@@ -45,30 +44,19 @@ class LLMService:
     def __init__(self):
         self.llm = ChatOpenAI(
             base_url="https://openrouter.ai/api/v1",
-            model="openrouter/free",
+            model="openai/gpt-oss-120b",
             api_key=settings.OPENROUTER_API_KEY,
             temperature=0.7,
             max_tokens=4000,
         )
 
-        self.tavily_tool = TavilySearchResults(
-            max_results=3, api_key=settings.TAVILY_API_KEY
+        self.tavily_tool = TavilySearch(
+            api_key=settings.TAVILY_API_KEY,
+            max_results=3,
+            search_depth="advanced",
+            include_raw_content=False,
         )
         self.tools = [self.tavily_tool]
-
-        # 1. Base agent without in-memory Checkpointer
-        self.raw_agent = create_agent(
-            model=self.llm,
-            tools=self.tools,
-        )
-
-        # 2. Wrap agent with PostgreSQL memory service
-        self.agent_with_history = RunnableWithMessageHistory(
-            self.raw_agent,
-            memory_service.get_session_history,
-            input_messages_key="messages",
-            history_messages_key="messages",
-        )
 
     def _get_current_time_str(self) -> str:
         return datetime.now().strftime("%A, %B %d, %Y at %I:%M %p")
@@ -80,8 +68,7 @@ class LLMService:
         )
 
     async def generate_response(self, user_message: str, session_id: str) -> str:
-        # Step A: Query vector database for user's library context
-        docs = vector_service.search_similar(user_message, k=2)
+        docs = await asyncio.to_thread(vector_service.search_similar, user_message, k=2)
         retrieved_context = (
             "\n---\n".join([d.page_content for d in docs])
             if docs
@@ -89,22 +76,82 @@ class LLMService:
         )
 
         system_prompt = self._build_system_prompt(retrieved_context)
+        history = memory_service.get_session_history(session_id)
 
-        config = {"configurable": {"session_id": session_id}}
-        inputs = {
-            "messages": [
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=user_message),
-            ]
-        }
+        messages = [SystemMessage(content=system_prompt)]
+        messages.extend(history.messages)
+        messages.append(HumanMessage(content=user_message))
 
-        result = await self.agent_with_history.ainvoke(inputs, config=config)
-        return str(result["messages"][-1].content)
+        try:
+            llm_with_tools = self.llm.bind_tools(self.tools)
+            response = await llm_with_tools.ainvoke(messages)
+            tool_calls = getattr(response, "tool_calls", None) or []
+
+            if tool_calls:
+                messages.append(response)
+
+                for tool_call in tool_calls:
+                    call_id = (
+                        tool_call.get("id", "tool_call_1")
+                        if isinstance(tool_call, dict)
+                        else getattr(tool_call, "id", "tool_call_1")
+                    )
+                    call_args = (
+                        tool_call.get("args", {})
+                        if isinstance(tool_call, dict)
+                        else getattr(tool_call, "args", {})
+                    )
+                    search_query = (
+                        call_args.get("query")
+                        if isinstance(call_args, dict)
+                        else getattr(call_args, "query", None)
+                    )
+                    if not search_query:
+                        search_query = user_message
+
+                    tool_result = await asyncio.to_thread(
+                        self.tavily_tool.invoke, {"query": search_query}
+                    )
+                    messages.append(
+                        ToolMessage(content=str(tool_result), tool_call_id=call_id)
+                    )
+
+                final_response = await self.llm.ainvoke(messages)
+                ai_content = (
+                    final_response.content
+                    if hasattr(final_response, "content")
+                    else str(final_response)
+                )
+            else:
+                ai_content = (
+                    response.content if hasattr(response, "content") else str(response)
+                )
+        except Exception:
+            fallback_response = await self.llm.ainvoke(messages)
+            ai_content = (
+                fallback_response.content
+                if hasattr(fallback_response, "content")
+                else str(fallback_response)
+            )
+
+        history.add_user_message(user_message)
+        history.add_ai_message(str(ai_content))
+        return str(ai_content)
 
     async def generate_stream(
-        self, user_message: str, session_id: str
+        self, user_message: list, session_id: str
     ) -> AsyncGenerator[str, None]:
-        docs = vector_service.search_similar(user_message, k=2)
+        # user_message is a List[MessageItem] passed from the Node backend.
+        # Extract the last user turn's text for RAG vector search.
+        last_user_text = ""
+        for item in reversed(user_message):
+            role = item.role if hasattr(item, "role") else item.get("role", "")
+            content = item.content if hasattr(item, "content") else item.get("content", "")
+            if role == "user":
+                last_user_text = content
+                break
+
+        docs = await asyncio.to_thread(vector_service.search_similar, last_user_text, k=2)
         retrieved_context = (
             "\n---\n".join([d.page_content for d in docs])
             if docs
@@ -113,30 +160,192 @@ class LLMService:
 
         system_prompt = self._build_system_prompt(retrieved_context)
 
-        config = {"configurable": {"session_id": session_id}}
-        inputs = {
-            "messages": [
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=user_message),
-            ]
-        }
-        async for chunk, metadata in self.agent_with_history.astream(
-            inputs, config=config, stream_mode="messages"
-        ):
-            if metadata.get("langgraph_node") == "agent" and chunk.content:
-                yield f"data: {chunk.content}\n\n"
+        # Build LangChain messages directly from the DB-sourced history list.
+        # This replaces the stale in-memory memory_service for the stream path.
+        messages = [SystemMessage(content=system_prompt)]
+        for item in user_message:
+            role = item.role if hasattr(item, "role") else item.get("role", "")
+            content = item.content if hasattr(item, "content") else item.get("content", "")
+            if role == "user":
+                messages.append(HumanMessage(content=content))
+            else:
+                from langchain_core.messages import AIMessage
+                messages.append(AIMessage(content=content))
+
+        print(f"\n=== AI REQUEST ===")
+        print(f"session_id: {session_id}")
+        print(f"last_user_message: {last_user_text}")
+        print(f"history_turns: {len(user_message)}")
+
+        try:
+            llm_with_tools = self.llm.bind_tools(self.tools)
+            try:
+                first_response = await asyncio.wait_for(
+                    llm_with_tools.ainvoke(messages), timeout=35
+                )
+            except (asyncio.TimeoutError, Exception) as e:
+                print(
+                    f"First response/tool binding failed or timed out: {e}. Falling back to direct streaming."
+                )
+                accumulated = ""
+                async for chunk in self.llm.astream(messages):
+                    if hasattr(chunk, "content") and chunk.content:
+                        content = str(chunk.content)
+                        accumulated += content
+                        escaped_content = (
+                            content.replace("\r\n", "\n")
+                            .replace("\r", "\n")
+                            .replace("\n", "\\n")
+                        )
+                        yield f"data: {escaped_content}\n\n"
+
+                if accumulated:
+                    print(
+                        f"\n=== AI FINAL RESPONSE (FALLBACK) ===\n{accumulated}\n=== END AI RESPONSE ===\n"
+                    )
+                return
+
+            stream_messages = list(messages)
+
+            if getattr(first_response, "tool_calls", None):
+                stream_messages.append(first_response)
+                yield "data: Searching web and your library...\n\n"
+
+                for tool_call in first_response.tool_calls:
+                    call_id = (
+                        tool_call.get("id", "tool_call_1")
+                        if isinstance(tool_call, dict)
+                        else getattr(tool_call, "id", "tool_call_1")
+                    )
+                    call_args = (
+                        tool_call.get("args", {})
+                        if isinstance(tool_call, dict)
+                        else getattr(tool_call, "args", {})
+                    )
+                    search_query = (
+                        call_args.get("query")
+                        if isinstance(call_args, dict)
+                        else getattr(call_args, "query", None)
+                    )
+                    if not search_query:
+                        search_query = last_user_text
+
+                    print(f"--> Executing Tool: {search_query}")
+                    try:
+                        tool_result = await asyncio.wait_for(
+                            asyncio.to_thread(
+                                self.tavily_tool.invoke, {"query": search_query}
+                            ),
+                            timeout=15,
+                        )
+                        stream_messages.append(
+                            ToolMessage(content=str(tool_result), tool_call_id=call_id)
+                        )
+                    except (asyncio.TimeoutError, Exception) as e:
+                        print(
+                            f"Tool execution failed or timed out: {e}. Proceeding without search results."
+                        )
+                        stream_messages.append(
+                            ToolMessage(
+                                content="Search failed or timed out. Please proceed using your internal knowledge.",
+                                tool_call_id=call_id,
+                            )
+                        )
+
+                accumulated = ""
+                async for chunk in self.llm.astream(stream_messages):
+                    if hasattr(chunk, "content") and chunk.content:
+                        content = str(chunk.content)
+                        accumulated += content
+                        escaped_content = (
+                            content.replace("\r\n", "\n")
+                            .replace("\r", "\n")
+                            .replace("\n", "\\n")
+                        )
+                        yield f"data: {escaped_content}\n\n"
+
+                if not accumulated:
+                    print(
+                        "Received empty response from streamed tool completion. Falling back to direct streaming without search context."
+                    )
+                    async for chunk in self.llm.astream(messages):
+                        if hasattr(chunk, "content") and chunk.content:
+                            content = str(chunk.content)
+                            accumulated += content
+                            escaped_content = (
+                                content.replace("\r\n", "\n")
+                                .replace("\r", "\n")
+                                .replace("\n", "\\n")
+                            )
+                            yield f"data: {escaped_content}\n\n"
+
+                if not accumulated:
+                    raise ValueError("empty response")
+
+                print(
+                    f"\n=== AI FINAL RESPONSE ===\n{accumulated}\n=== END AI RESPONSE ===\n"
+                )
+                return
+
+            accumulated = ""
+            async for chunk in self.llm.astream(stream_messages):
+                if hasattr(chunk, "content") and chunk.content:
+                    content = str(chunk.content)
+                    accumulated += content
+                    escaped_content = (
+                        content.replace("\r\n", "\n")
+                        .replace("\r", "\n")
+                        .replace("\n", "\\n")
+                    )
+                    yield f"data: {escaped_content}\n\n"
+
+            if not accumulated:
+                print("Received empty response in base stream. Retrying once...")
+                async for chunk in self.llm.astream(stream_messages):
+                    if hasattr(chunk, "content") and chunk.content:
+                        content = str(chunk.content)
+                        accumulated += content
+                        escaped_content = (
+                            content.replace("\r\n", "\n")
+                            .replace("\r", "\n")
+                            .replace("\n", "\\n")
+                        )
+                        yield f"data: {escaped_content}\n\n"
+
+            if not accumulated:
+                raise ValueError("empty response")
+
+            print(
+                f"\n=== AI FINAL RESPONSE ===\n{accumulated}\n=== END AI RESPONSE ===\n"
+            )
+
+        except asyncio.TimeoutError:
+            timeout_message = "The AI service is taking longer than expected. Please try again in a moment."
+            print(
+                f"\n=== AI STREAM TIMEOUT ===\n{timeout_message}\n=== END AI STREAM TIMEOUT ===\n"
+            )
+            yield f"data: {timeout_message}\n\n"
+            return
+        except Exception as exc:
+            error_message = (
+                f"I hit an issue while generating the response. Details: {exc}"
+            )
+            print(f"\n=== AI STREAM ERROR ===\n{exc}\n=== END AI STREAM ERROR ===\n")
+            yield f"data: {error_message}\n\n"
+            return
 
     async def generate_structured_recommendations(
         self, query: str
     ) -> StructuredRecommendationResponse:
-        structured_llm = self.llm.with_structured_output(
-            StructuredRecommendationResponse, method="function_calling"
-        )
+        from langchain_core.output_parsers import PydanticOutputParser
+
+        parser = PydanticOutputParser(pydantic_object=StructuredRecommendationResponse)
 
         system_prompt = (
-            f"You are an expert media recommendation engine. "
-            f"Today's date is {self._get_current_time_str()}. "
-            f"Return precise structured recommendations based on the user's criteria."
+            f"You are an expert media recommendation engine.\n"
+            f"Today's date is {self._get_current_time_str()}.\n"
+            f"Return precise structured recommendations based on the user's criteria.\n\n"
+            f"{parser.get_format_instructions()}"
         )
 
         prompt = [
@@ -144,7 +353,8 @@ class LLMService:
             HumanMessage(content=query),
         ]
 
-        return await structured_llm.ainvoke(prompt)
+        response = await self.llm.ainvoke(prompt)
+        return parser.parse(response.content)
 
 
 llm_service = LLMService()
