@@ -2,12 +2,22 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import axios from "axios";
 import { MessageEntry } from "../models/chatMessageModel.js";
 import { SessionEntry } from "../models/chatSessionModel.js";
+import { LibraryEntry } from "../models/libraryEntryModel.js";
 
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "http://localhost:8000";
 
 interface ChatRequestBody {
   sessionId: string;
   prompt: string;
+}
+
+interface LibraryItem {
+  title: string;
+  type: string;
+  year?: number | null;
+  genre?: string[];
+  rating?: number | null;
+  status: "COMPLETED" | "WATCHING" | "PLAN_TO_WATCH";
 }
 
 async function messageRoutes(fastify: FastifyInstance) {
@@ -75,6 +85,77 @@ async function messageRoutes(fastify: FastifyInstance) {
           role: msg.sender.toLowerCase() === "user" ? "user" : "assistant",
           content: msg.content,
         }));
+        const requiresLibraryContext = (userPrompt: string): boolean => {
+          // Regex with word boundaries prevents accidental substring triggers
+          const pattern =
+            /\b(my library|my list|watchlist|plan to watch|suggest|recommend|watched|what should i watch)\b/i;
+          return pattern.test(userPrompt);
+        };
+        const formatLibraryToString = (items: LibraryItem[]): string => {
+          if (!items || items.length === 0) {
+            return "USER LIBRARY: No items saved.";
+          }
+
+          // 1. Group items by status
+          const completed: string[] = [];
+          const watching: string[] = [];
+          const planToWatch: string[] = [];
+
+          for (const item of items) {
+            const yearStr = item.year ? ` (${item.year})` : "";
+            const typeStr = item.type ? ` [${item.type}]` : "";
+            const genreStr =
+              item.genre && item.genre.length > 0
+                ? ` | Genres: ${item.genre.join(", ")}`
+                : "";
+
+            if (item.status === "COMPLETED") {
+              const ratingStr = item.rating
+                ? ` | Rating: ${item.rating}/10`
+                : " | Unrated";
+              completed.push(
+                `- ${item.title}${yearStr}${typeStr}${ratingStr}${genreStr}`,
+              );
+            } else if (item.status === "WATCHING") {
+              watching.push(`- ${item.title}${yearStr}${typeStr}${genreStr}`);
+            } else if (item.status === "PLAN_TO_WATCH") {
+              // Omit genres for watchlist to save additional tokens
+              planToWatch.push(`- ${item.title}${yearStr}${typeStr}`);
+            }
+          }
+
+          // 2. Build structured string block
+          let output = "USER MEDIA LIBRARY:\n";
+
+          output += "\n[COMPLETED / WATCHED]\n";
+          output += completed.length > 0 ? completed.join("\n") : "None";
+
+          output += "\n\n[CURRENTLY WATCHING]\n";
+          output += watching.length > 0 ? watching.join("\n") : "None";
+
+          output += "\n\n[PLAN TO WATCH / WATCHLIST]\n";
+          output += planToWatch.length > 0 ? planToWatch.join("\n") : "None";
+
+          return output;
+        };
+
+        let systemContent = "You are a media recommendation assistant.";
+
+        if (requiresLibraryContext(prompt)) {
+          const libraryItems = await LibraryEntry.findAll({
+            where: { userId: session.user_id },
+            attributes: ["title", "type", "year", "genre", "status", "rating"],
+            limit: 50,
+          });
+
+          const libraryString = formatLibraryToString(libraryItems);
+
+          systemContent +=
+            `\n\n${libraryString}\n\n` +
+            `INSTRUCTIONS:\n` +
+            `- Never suggest items from [COMPLETED] or [CURRENTLY WATCHING].\n` +
+            `- Prioritize matching items from [PLAN TO WATCH] first if relevant.`;
+        }
 
         // 3. The user message was saved before the history fetch, so formattedHistory
         //    already contains it as the last item — no need to append again.
@@ -84,7 +165,7 @@ async function messageRoutes(fastify: FastifyInstance) {
         const pythonResponse = await axios.post(
           `${AI_SERVICE_URL}/chat/stream`,
           {
-            messages: payload, // Changed key to 'messages'
+            messages: payload,
             conversation_id: sessionId,
           },
           { responseType: "stream" },
