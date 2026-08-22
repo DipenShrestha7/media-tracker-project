@@ -85,12 +85,27 @@ async function messageRoutes(fastify: FastifyInstance) {
           role: msg.sender.toLowerCase() === "user" ? "user" : "assistant",
           content: msg.content,
         }));
+
         const requiresLibraryContext = (userPrompt: string): boolean => {
           // Regex with word boundaries prevents accidental substring triggers
-          const pattern =
-            /\b(my library|my list|watchlist|plan to watch|suggest|recommend|watched|what should i watch)\b/i;
-          return pattern.test(userPrompt);
+          const directKeywords =
+            /\b(library|list|watchlist|suggest|recommend|watched|what should i watch)\b/i;
+
+          // 1. Direct match in prompt
+          if (directKeywords.test(userPrompt)) return true;
+
+          // 2. Contextual follow-up check (e.g. "check again", "show me more")
+          const followUpKeywords =
+            /\b(check again|show me|what else|update|again)\b/i;
+          const lastUserMsg =
+            history.slice(-2).find((m) => m.sender === "user")?.content || "";
+
+          return (
+            followUpKeywords.test(userPrompt) &&
+            directKeywords.test(lastUserMsg)
+          );
         };
+
         const formatLibraryToString = (items: LibraryItem[]): string => {
           if (!items || items.length === 0) {
             return "USER LIBRARY: No items saved.";
@@ -139,12 +154,18 @@ async function messageRoutes(fastify: FastifyInstance) {
           return output;
         };
 
-        let systemContent = "You are a media recommendation assistant.";
+        let systemContent = `You are a media recommendation assistant. 
+        FORMATTING RULES:
+        - When presenting library data, render a SINGLE combined Markdown table.
+        - Use columns: | Media Type | Title | Year | Status | Rating |.
+        - Do NOT output separate tables for empty categories or individual media types.
+        - Omit null, empty, or 'none' entries completely.`;
 
         if (requiresLibraryContext(prompt)) {
           const libraryItems = await LibraryEntry.findAll({
             where: { userId: session.user_id },
             attributes: ["title", "type", "year", "genre", "status", "rating"],
+            order: [["updatedAt", "DESC"]],
             limit: 50,
           });
 
@@ -157,15 +178,13 @@ async function messageRoutes(fastify: FastifyInstance) {
             `- Prioritize matching items from [PLAN TO WATCH] first if relevant.`;
         }
 
-        // 3. The user message was saved before the history fetch, so formattedHistory
-        //    already contains it as the last item — no need to append again.
-        const payload = [...formattedHistory];
-
-        // 4. Send request matching updated Python schema
+        // History already includes the user message saved above.
+        // Keep library/system instructions in system_context, not in messages.
         const pythonResponse = await axios.post(
           `${AI_SERVICE_URL}/chat/stream`,
           {
-            messages: payload,
+            messages: formattedHistory,
+            system_context: systemContent,
             conversation_id: sessionId,
           },
           { responseType: "stream" },

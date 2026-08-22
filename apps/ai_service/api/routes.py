@@ -16,8 +16,14 @@ async def chat_endpoint(request: ChatRequest):
     try:
         conv_id = request.conversation_id or str(uuid.uuid4())
 
+        last_user = next(
+            (m.content for m in reversed(request.messages) if m.role == "user"),
+            "",
+        )
         ai_message = await llm_service.generate_response(
-            user_message=request.message, session_id=conv_id
+            user_message=last_user,
+            system_context=request.system_context or "",
+            session_id=conv_id,
         )
 
         return ChatResponse(
@@ -32,7 +38,11 @@ async def chat_stream_endpoint(request: ChatRequest):
     """Returns Server-Sent Events (SSE) stream for real-time frontend rendering."""
     conv_id = request.conversation_id or str(uuid.uuid4())
     return StreamingResponse(
-        llm_service.generate_stream(user_message=request.messages, session_id=conv_id),
+        llm_service.generate_stream(
+            user_message=request.messages,
+            system_context=request.system_context,
+            session_id=conv_id,
+        ),
         media_type="text/event-stream",
     )
 

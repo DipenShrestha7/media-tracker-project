@@ -1,9 +1,9 @@
 from datetime import datetime
 import asyncio
-from typing import AsyncGenerator, List
+from typing import AsyncGenerator, List, Optional
 
 from langchain_tavily import TavilySearch
-from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_openai import ChatOpenAI
 
 from config import settings
@@ -37,7 +37,10 @@ STRICT NEGATIVE CONSTRAINTS:
 - Output ONLY the clean response intended for the user interface.
 
 Context:
-{context}"""
+{context}
+
+USER LIBRARY / SYSTEM CONTEXT:
+{system_context}"""
 
 
 class LLMService:
@@ -61,13 +64,19 @@ class LLMService:
     def _get_current_time_str(self) -> str:
         return datetime.now().strftime("%A, %B %d, %Y at %I:%M %p")
 
-    def _build_system_prompt(self, context: str) -> str:
+    def _build_system_prompt(self, context: str, system_context: str | None) -> str:
         return SYSTEM_PROMPT_TEMPLATE.format(
             current_time=self._get_current_time_str(),
             context=context,
+            system_context=system_context or "No user library context provided.",
         )
 
-    async def generate_response(self, user_message: str, session_id: str) -> str:
+    async def generate_response(
+        self,
+        user_message: str,
+        system_context: Optional[str],
+        session_id: str,
+    ) -> str:
         docs = await asyncio.to_thread(vector_service.search_similar, user_message, k=2)
         retrieved_context = (
             "\n---\n".join([d.page_content for d in docs])
@@ -75,7 +84,7 @@ class LLMService:
             else "No specific database context found."
         )
 
-        system_prompt = self._build_system_prompt(retrieved_context)
+        system_prompt = self._build_system_prompt(retrieved_context, system_context)
         history = memory_service.get_session_history(session_id)
 
         messages = [SystemMessage(content=system_prompt)]
@@ -139,37 +148,45 @@ class LLMService:
         return str(ai_content)
 
     async def generate_stream(
-        self, user_message: list, session_id: str
+        self,
+        user_message: list,
+        system_context: Optional[str],
+        session_id: str,
     ) -> AsyncGenerator[str, None]:
         # user_message is a List[MessageItem] passed from the Node backend.
         # Extract the last user turn's text for RAG vector search.
         last_user_text = ""
         for item in reversed(user_message):
             role = item.role if hasattr(item, "role") else item.get("role", "")
-            content = item.content if hasattr(item, "content") else item.get("content", "")
+            content = (
+                item.content if hasattr(item, "content") else item.get("content", "")
+            )
             if role == "user":
                 last_user_text = content
                 break
 
-        docs = await asyncio.to_thread(vector_service.search_similar, last_user_text, k=2)
+        docs = await asyncio.to_thread(
+            vector_service.search_similar, last_user_text, k=2
+        )
         retrieved_context = (
             "\n---\n".join([d.page_content for d in docs])
             if docs
             else "No specific database context found."
         )
 
-        system_prompt = self._build_system_prompt(retrieved_context)
+        system_prompt = self._build_system_prompt(retrieved_context, system_context)
 
-        # Build LangChain messages directly from the DB-sourced history list.
-        # This replaces the stale in-memory memory_service for the stream path.
+        # Build LangChain messages from user/assistant history only.
+        # Library context belongs in the system prompt, not as a chat turn.
         messages = [SystemMessage(content=system_prompt)]
         for item in user_message:
             role = item.role if hasattr(item, "role") else item.get("role", "")
-            content = item.content if hasattr(item, "content") else item.get("content", "")
+            content = (
+                item.content if hasattr(item, "content") else item.get("content", "")
+            )
             if role == "user":
                 messages.append(HumanMessage(content=content))
-            else:
-                from langchain_core.messages import AIMessage
+            elif role == "assistant":
                 messages.append(AIMessage(content=content))
 
         print(f"\n=== AI REQUEST ===")

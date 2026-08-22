@@ -16,6 +16,7 @@ class ChatRequest(BaseModel):
             {"role": "user", "content": "Can you summarize it for me?"},
         ],
     )
+    system_context: Optional[str] = Field(None, example="You are a helpful assistant.")
     conversation_id: Optional[str] = Field(None, example="conv_abc")
 
 
