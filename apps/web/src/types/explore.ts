@@ -16,6 +16,7 @@ export interface ExploreItem {
   year: number | undefined;
   genre: string[];
   source: "OMDB" | "ANILIST" | "TVMAZE";
+  inLibrary?: boolean;
 }
 
 export interface ExploreResponse {

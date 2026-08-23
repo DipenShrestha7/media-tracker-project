@@ -71,8 +71,15 @@ const Explore: React.FC<ExploreProps> = ({ onOpenLogin }) => {
           ? `?q=${encodeURIComponent(trimmedSearch)}`
           : "";
 
+        const token = localStorage.getItem("nexus_token");
+        const headers: Record<string, string> = {};
+        if (token) {
+          headers["Authorization"] = `Bearer ${token}`;
+        }
+
         const response = await fetch(`/api/explore${query}`, {
           signal: controller.signal,
+          headers,
         });
 
         if (!response.ok) {
@@ -178,7 +185,7 @@ const Explore: React.FC<ExploreProps> = ({ onOpenLogin }) => {
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
           {filteredItems.map((item) => {
             const savedStatus = addedStatuses[item.id];
-            const isInLibrary = Boolean(savedStatus);
+            const isInLibrary = Boolean(savedStatus) || Boolean(item.inLibrary);
             const isSaving = Boolean(savingIds[item.id]);
 
             return (

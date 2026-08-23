@@ -131,6 +131,19 @@ export const updateLibraryStatus = async (
   return toLibraryItem(entry);
 };
 
+export const getLibraryIds = async (
+  userId: string,
+): Promise<Set<string>> => {
+  ensureDatabase();
+  const entries = await LibraryEntry.findAll({
+    where: { userId },
+    attributes: ["id"],
+    raw: true,
+  });
+
+  return new Set(entries.map((entry) => entry.id));
+};
+
 export const removeLibraryItem = async (
   id: string,
   userId: string,

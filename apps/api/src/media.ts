@@ -16,6 +16,7 @@ export interface ExploreItem {
   year: number | undefined;
   genre: string[];
   source: "OMDB" | "ANILIST" | "TVMAZE";
+  inLibrary?: boolean;
 }
 
 export interface ExploreResponse {
@@ -406,6 +407,7 @@ async function fetchTvMazeItems(searchTerm?: string): Promise<ExploreItem[]> {
 
 export async function buildExploreResponse(
   searchTerm?: string,
+  libraryIds?: Set<string>,
 ): Promise<ExploreResponse> {
   const apiKey = process.env.OMDB_API_KEY;
 
@@ -419,9 +421,14 @@ export async function buildExploreResponse(
     fetchTvMazeItems(searchTerm).catch(() => []),
   ]);
 
+  const stamp = (items: ExploreItem[]): ExploreItem[] =>
+    libraryIds
+      ? items.map((item) => ({ ...item, inLibrary: libraryIds.has(item.id) }))
+      : items;
+
   return {
-    moviesAndSeries,
-    animeManga,
-    kdramas,
+    moviesAndSeries: stamp(moviesAndSeries),
+    animeManga: stamp(animeManga),
+    kdramas: stamp(kdramas),
   };
 }

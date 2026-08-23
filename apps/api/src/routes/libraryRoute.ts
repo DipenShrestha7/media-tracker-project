@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import {
   addToLibrary,
+  getLibraryIds,
   listLibraryItems,
   removeLibraryItem,
   updateLibraryStatus,
@@ -149,8 +150,29 @@ function libraryRoutes(fastify: FastifyInstance) {
     const query = querySchema.parse(request.query);
     const searchTerm = query.q?.trim() || query.search?.trim() || undefined;
 
+    // Optional auth — don't error if missing, just skip inLibrary enrichment
+    let userId: string | undefined;
+    const authHeader = request.headers.authorization;
+    if (authHeader?.startsWith("Bearer ")) {
+      const token = authHeader.split(" ")[1];
+      if (token) {
+        try {
+          const { payload } = await jwtVerify(token, JOSE_SECRET_KEY);
+          userId = (payload.userId || payload.id || payload.sub) as
+            | string
+            | undefined;
+        } catch {
+          // Invalid token — continue without userId
+        }
+      }
+    }
+
     try {
-      const payload = await buildExploreResponse(searchTerm);
+      const libraryIds =
+        userId && hasDatabase
+          ? await getLibraryIds(userId).catch(() => new Set<string>())
+          : undefined;
+      const payload = await buildExploreResponse(searchTerm, libraryIds);
       return reply.send(payload);
     } catch (error) {
       reply.status(500);

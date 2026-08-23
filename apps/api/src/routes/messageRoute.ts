@@ -171,7 +171,7 @@ async function messageRoutes(fastify: FastifyInstance) {
 
           const libraryString = formatLibraryToString(libraryItems);
 
-          systemContent +=
+          systemContent += 
             `\n\n${libraryString}\n\n` +
             `INSTRUCTIONS:\n` +
             `- Never suggest items from [COMPLETED] or [CURRENTLY WATCHING].\n` +
