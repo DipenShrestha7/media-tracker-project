@@ -1,13 +1,12 @@
 from datetime import datetime
 import asyncio
-from typing import AsyncGenerator, List, Optional
+from typing import AsyncGenerator, Optional
 
 from langchain_tavily import TavilySearch
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_openai import ChatOpenAI
 
 from config import settings
-from models.chat import StructuredRecommendationResponse
 from services.memory import memory_service
 from services.vector_store import vector_service
 
@@ -350,28 +349,6 @@ class LLMService:
             print(f"\n=== AI STREAM ERROR ===\n{exc}\n=== END AI STREAM ERROR ===\n")
             yield f"data: {error_message}\n\n"
             return
-
-    async def generate_structured_recommendations(
-        self, query: str
-    ) -> StructuredRecommendationResponse:
-        from langchain_core.output_parsers import PydanticOutputParser
-
-        parser = PydanticOutputParser(pydantic_object=StructuredRecommendationResponse)
-
-        system_prompt = (
-            f"You are an expert media recommendation engine.\n"
-            f"Today's date is {self._get_current_time_str()}.\n"
-            f"Return precise structured recommendations based on the user's criteria.\n\n"
-            f"{parser.get_format_instructions()}"
-        )
-
-        prompt = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=query),
-        ]
-
-        response = await self.llm.ainvoke(prompt)
-        return parser.parse(response.content)
 
 
 llm_service = LLMService()
