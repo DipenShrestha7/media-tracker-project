@@ -152,8 +152,8 @@ const HomePage: React.FC = () => {
           </div>
 
           <button className="text-cyan-600 dark:text-cyan-400 font-semibold hover:text-cyan-700 dark:hover:text-cyan-300 text-sm flex items-center gap-1 transition-colors">
-            <span>View All</span>
-            <span className="text-xs">→</span>
+            <button>Refresh</button>
+            <span className="text-xs">↻</span>
           </button>
         </div>
         <div className="relative">

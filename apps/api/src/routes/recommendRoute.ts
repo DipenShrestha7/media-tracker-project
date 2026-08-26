@@ -2,3 +2,11 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { RecommendationEntry } from "../models/recommendModel.js";
 import { LibraryEntry } from "../models/libraryEntryModel.js";
 import { verifyToken } from "../utils/jose.js";
+
+async function recommendRoute(fastify: FastifyInstance) {
+  fastify.get("/recommend", async (req, res) => {
+    try {
+    } catch (error) {}
+  });
+}
+export default recommendRoute;

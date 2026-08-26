@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import {
-  Calendar,
   CheckCircle2,
   Clock,
   Film,
@@ -231,21 +230,15 @@ const Library: React.FC = () => {
                   <span className="text-[10px] font-bold text-cyan-500 uppercase tracking-wide">
                     {item.type}
                   </span>
-                  <h3 className="font-bold text-sm line-clamp-1">
+                  <h3 className="font-bold text-sm line-clamp-1 mt-1">
                     {item.title}
                   </h3>
                   {typeof item.rating === "number" && (
-                    <div className="flex items-center gap-1 text-amber-400 text-xs font-bold mt-1">
+                    <div className="flex items-center gap-1 text-amber-400 text-xs font-bold mt-2">
                       <Star className="w-3.5 h-3.5 fill-amber-400" />
                       {item.rating} / 10
                     </div>
                   )}
-                  <div className="mt-2 flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-                    <Calendar className="w-3.5 h-3.5" />
-                    {item.status === "COMPLETED"
-                      ? `Completed ${item.completedAt ?? "recently"}`
-                      : `Status: ${item.status.replace("_", " ")}`}
-                  </div>
                 </div>
 
                 <div className="flex items-center justify-between pt-2 gap-2">
