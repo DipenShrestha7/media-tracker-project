@@ -8,7 +8,6 @@ from langchain_openai import ChatOpenAI
 
 from config import settings
 from services.memory import memory_service
-from services.vector_store import vector_service
 
 SYSTEM_PROMPT_TEMPLATE = """You are Nexus AI, an expert, proactive assistant for a personal media tracker app called "Nexus". You specialize in analyzing, summarizing, discovering, and recommending movies, TV shows, anime, manga, and general pop culture.
 
@@ -17,9 +16,8 @@ TEMPORAL CONTEXT:
 - Use this temporal information to determine if information needs to be fetched via web search (e.g., upcoming releases, recent movie debuts, current news).
 
 CORE CAPABILITIES & CONTEXT HANDLING:
-1. USE NEXUS DATABASE CONTEXT: When the query involves user recommendations, watchlists, or media synopses stored in Nexus, draw upon the provided context retrieved from the database/RAG index.
-2. LIVE SEARCH FALLBACK: If local context or internal knowledge is insufficient for recent releases, real-time news, or streaming availability, use Tavily web search capabilities to deliver up-to-date information.
-3. PERSONALIZATION: Personalize all recommendations and discussions based on user ratings, completion statuses, and preferences provided in the user's data profile.
+1. LIVE SEARCH FALLBACK: If local context or internal knowledge is insufficient for recent releases, real-time news, or streaming availability, use Tavily web search capabilities to deliver up-to-date information.
+2. PERSONALIZATION: Personalize all recommendations and discussions based on user ratings, completion statuses, and preferences provided in the user's data profile.
 
 RESPONSE LENGTH & DEPTH:
 1. ADAPTIVE LENGTH: Match the scope and depth requested by the user.
@@ -34,9 +32,6 @@ STRICT NEGATIVE CONSTRAINTS:
 - NEVER output raw HTML tags (`<br>`, `<div>`, `<table>`, etc.).
 - NEVER include internal system logs, execution notes, or status phrases in responses.
 - Output ONLY the clean response intended for the user interface.
-
-Context:
-{context}
 
 USER LIBRARY / SYSTEM CONTEXT:
 {system_context}"""
@@ -63,10 +58,9 @@ class LLMService:
     def _get_current_time_str(self) -> str:
         return datetime.now().strftime("%A, %B %d, %Y at %I:%M %p")
 
-    def _build_system_prompt(self, context: str, system_context: str | None) -> str:
+    def _build_system_prompt(self, system_context: str | None) -> str:
         return SYSTEM_PROMPT_TEMPLATE.format(
             current_time=self._get_current_time_str(),
-            context=context,
             system_context=system_context or "No user library context provided.",
         )
 
@@ -76,14 +70,7 @@ class LLMService:
         system_context: Optional[str],
         session_id: str,
     ) -> str:
-        docs = await asyncio.to_thread(vector_service.search_similar, user_message, k=2)
-        retrieved_context = (
-            "\n---\n".join([d.page_content for d in docs])
-            if docs
-            else "No specific database context found."
-        )
-
-        system_prompt = self._build_system_prompt(retrieved_context, system_context)
+        system_prompt = self._build_system_prompt(system_context)
         history = memory_service.get_session_history(session_id)
 
         messages = [SystemMessage(content=system_prompt)]
@@ -164,16 +151,7 @@ class LLMService:
                 last_user_text = content
                 break
 
-        docs = await asyncio.to_thread(
-            vector_service.search_similar, last_user_text, k=2
-        )
-        retrieved_context = (
-            "\n---\n".join([d.page_content for d in docs])
-            if docs
-            else "No specific database context found."
-        )
-
-        system_prompt = self._build_system_prompt(retrieved_context, system_context)
+        system_prompt = self._build_system_prompt(system_context)
 
         # Build LangChain messages from user/assistant history only.
         # Library context belongs in the system prompt, not as a chat turn.

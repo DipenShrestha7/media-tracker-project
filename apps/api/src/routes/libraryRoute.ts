@@ -8,7 +8,7 @@ import {
 } from "../library.js";
 import { z } from "zod";
 import { jwtVerify } from "jose";
-import { hasDatabase } from "../database.js";
+import { hasDatabase } from "../config/db.js";
 import { buildExploreResponse } from "../media.js";
 
 const exploreItemSchema = z.object({

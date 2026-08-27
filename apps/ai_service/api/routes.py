@@ -1,7 +1,8 @@
 import uuid
 from fastapi import APIRouter, HTTPException
 from services.llm import llm_service
-from services.recommendations import generate_structured_recommendations
+
+# from services.recommendations import generate_structured_recommendations
 from fastapi.responses import StreamingResponse
 from models.chat import (
     ChatRequest,
@@ -48,12 +49,12 @@ async def chat_stream_endpoint(request: ChatRequest):
     )
 
 
-@router.post("/chat/recommend", response_model=StructuredRecommendationResponse)
-async def structured_recommend_endpoint(request: ChatRequest):
-    """Returns strongly-typed JSON payload matching StructuredRecommendationResponse schema."""
-    try:
-        return await generate_structured_recommendations(query=request.message)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Structured Output Error: {str(e)}"
-        )
+# @router.post("/chat/recommend", response_model=StructuredRecommendationResponse)
+# async def structured_recommend_endpoint(request: ChatRequest):
+#     """Returns strongly-typed JSON payload matching StructuredRecommendationResponse schema."""
+#     try:
+#         return await generate_structured_recommendations(query=request.message)
+#     except Exception as e:
+#         raise HTTPException(
+#             status_code=500, detail=f"Structured Output Error: {str(e)}"
+#         )
