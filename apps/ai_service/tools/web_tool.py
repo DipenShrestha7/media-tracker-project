@@ -20,4 +20,33 @@ def get_web_search_tool():
     )
 
 
+def get_web_recommend_tool():
+    """Returns an initialized Tavily Search Tool tuned for current media updates."""
+    return TavilySearch(
+        api_key=settings.TAVILY_API_KEY,
+        max_results=5,
+        search_depth="basic",
+        include_raw_content=False,
+        include_domains=[
+            "imdb.com",
+            "myanimelist.net",
+            "anilist.co",
+            "tvmaze.com",
+            "rottentomatoes.com",
+        ],
+        description=(
+            """
+            You are an expert media recommendation engine for NEXUS.
+            Analyze ALL items in the user's library across ALL genres and media types (Movies, TV Series, Anime, Manga).
+
+            Rules for Recommendations:
+            1. Diversity: You MUST recommend a mix matching the user's library types (e.g., at least 1 Anime, 1 TV Series, and Movies).
+            2. Relevance: Do not recommend generic blockbusters unless they directly match the user's specific genre preferences (e.g., Crime/Drama, Action/Fantasy, Sci-Fi/Adventure).
+            3. Accuracy: Ensure exact official titles and release years.
+            """
+        ),
+    )
+
+
 web_search_tool = get_web_search_tool()
+recommend_search_tool = get_web_recommend_tool()

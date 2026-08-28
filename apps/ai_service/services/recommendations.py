@@ -1,78 +1,113 @@
-import os
 import sys
 from pathlib import Path
-from typing import List, Dict, Any
-from typing_extensions import TypedDict
-from pydantic import BaseModel, Field
+import json
 
 # Ensure parent directory is in sys.path for direct execution
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from config import settings
-
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END
+from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.output_parsers import PydanticOutputParser
+from langgraph.prebuilt import ToolNode, tools_condition
+from models.recommendaModel import (
+    RecommendationList,
+    RecommendationState,
+)
+from tools.web_tool import recommend_search_tool
+from prompts.recommendPrompt import AGENT_SYSTEM_PROMPT
+from prompts.recommendPrompt import EXTRACTOR_SYSTEM_PROMPT
+
+llm = ChatOpenAI(
+    base_url="https://openrouter.ai/api/v1",
+    model="openai/gpt-oss-120b",
+    api_key=settings.OPENROUTER_API_KEY,
+    temperature=0.7,
+    max_tokens=4000,
+)
 
 
-# 1. Define Structured Output Schema for Candidates
-class CandidateRecommendation(BaseModel):
-    title: str = Field(description="Exact official title of the recommended media")
-    year: int = Field(description="Release year of the specific item")
-    type: str = Field(
-        description="Media type: 'movie', 'series', 'anime', 'manga', or 'kdrama'"
-    )
-    source_hint: str = Field(
-        description="Best API to fetch metadata from: 'OMDB', 'ANILIST', or 'TVMAZE'"
-    )
+# Node 1: Reasoning & Tool Calling
 
 
-class RecommendationList(BaseModel):
-    recommendations: List[CandidateRecommendation]
+def agent_node(state: RecommendationState):
+    llm_with_tools = llm.bind_tools([recommend_search_tool])
+    messages = state.get("messages", [])
+    # If starting fresh, attach system prompt and library input
+    if not messages:
+        system_prompt = SystemMessage(content=AGENT_SYSTEM_PROMPT)
+        user_msg = HumanMessage(
+            content=f"User Library context: {state['user_library']}"
+        )
+        messages_to_send = [system_prompt, user_msg]
+    else:
+        messages_to_send = state["messages"]
+
+    response = llm_with_tools.invoke(messages_to_send)
+
+    # --- DEBUG LOGGING ---
+    if response.tool_calls:
+        for tool_call in response.tool_calls:
+            print(f"🔍 AGENT IS SEARCHING FOR: {tool_call['args']}")
+    else:
+        print("🤖 AGENT FINISHED SEARCHING (Proceeding to Extractor)")
+    # ---------------------
+
+    return {"messages": [response]}
 
 
-# 2. Define Graph State
-class RecommendationState(TypedDict):
-    user_library: List[Dict[str, Any]]
-    candidates: List[Dict[str, Any]]
-
-
-# 3. Define the AI Reasoning Node
-def generate_recommendations_node(state: RecommendationState) -> Dict[str, Any]:
-    llm = ChatOpenAI(
-        base_url="https://openrouter.ai/api/v1",
-        model="openai/gpt-oss-120b",
-        api_key=settings.OPENROUTER_API_KEY,
-        temperature=0.7,
-        max_tokens=4000,
-    )
-    structured_llm = llm.with_structured_output(RecommendationList)
-
+# 4. Node 2: Final Structured Extraction
+def extractor_node(state: RecommendationState):
+    parser = PydanticOutputParser(pydantic_object=RecommendationList)
     prompt = ChatPromptTemplate.from_messages(
         [
             (
                 "system",
-                """You are an expert media recommendation engine for an app called NEXUS.
-                Analyze the user's library and generate 5 high-quality media recommendations across movies, anime, series, manga, manhwa or kdramas.
-                For each recommendation, provide the exact official title, the release year, the media type, and the best primary API source ('OMDB' for movies/shows, 'ANILIST' for anime/manga/manhwa, 'TVMAZE' for non-US or TV series).""",
+                EXTRACTOR_SYSTEM_PROMPT
+                + "\n\nSchema Instructions:\n{format_instructions}",
             ),
-            ("user", "User Library Context: {library}"),
+            ("placeholder", "{messages}"),
         ]
     )
 
-    chain = prompt | structured_llm
-    response = chain.invoke({"library": state["user_library"]})
+    # 3. Chain prompt -> standard llm -> parser
+    chain = prompt | llm | parser
 
-    # Convert Pydantic models to dicts for graph state
-    candidate_dicts = [item.model_dump() for item in response.recommendations]
+    result = chain.invoke(
+        {
+            "messages": state["messages"],
+            "format_instructions": parser.get_format_instructions(),
+        }
+    )
+    candidate_dicts = [item.model_dump() for item in result.recommendations]
+
     return {"candidates": candidate_dicts}
 
 
-# 4. Assemble Graph
+# 5. Graph Assembly
 workflow = StateGraph(RecommendationState)
-workflow.add_node("generate_recommendations", generate_recommendations_node)
-workflow.add_edge(START, "generate_recommendations")
-workflow.add_edge("generate_recommendations", END)
+
+workflow.add_node("agent", agent_node)
+workflow.add_node("tools", ToolNode([recommend_search_tool]))
+workflow.add_node("extractor", extractor_node)
+
+workflow.add_edge(START, "agent")
+
+# If the agent requests search, route to 'tools'. If done searching, route to 'extractor'.
+workflow.add_conditional_edges(
+    "agent",
+    tools_condition,
+    {
+        "tools": "tools",  # Routes to tool execution when tools are requested
+        "__end__": "extractor",  # Routes to extraction node when search is finished
+    },
+)
+
+# After tool runs, loop back to agent to inspect search results
+workflow.add_edge("tools", "agent")
+workflow.add_edge("extractor", END)
 
 recommendation_app = workflow.compile()
 
@@ -96,14 +131,36 @@ if __name__ == "__main__":
             "genres": ["Crime", "Drama"],
             "user_rating": 9.5,
         },
+        {
+            "title": "Vincenzo",
+            "type": "series",
+            "genres": ["Dark Comedy", "Action", "Crime"],
+            "user_rating": 8.4,
+        },
     ]
-    import json
-
     print("--- Running Recommendation Graph with Mock Library ---")
 
     # Run graph
-    initial_state = {"user_library": MOCK_USER_LIBRARY, "candidates": []}
+    initial_state = {
+        "messages": [],
+        "user_library": MOCK_USER_LIBRARY,
+        "candidates": [],
+    }
     result = recommendation_app.invoke(initial_state)
+
+    print("\n--- AGENT EXECUTION LOG ---")
+    for i, msg in enumerate(result["messages"]):
+        # 1. Inspect what search query the LLM issued
+        if hasattr(msg, "tool_calls") and msg.tool_calls:
+            for call in msg.tool_calls:
+                print(f"\n[Turn {i}] LLM Issued Search Query:")
+                print(f"  Tool Name: {call['name']}")
+                print(f"  Query Arguments: {call['args']}")
+
+        # 2. Inspect what Tavily returned
+        elif msg.type == "tool":
+            print(f"\n[Turn {i}] Tavily Raw Search Output:")
+            print(f"  {msg.content[:300]}...")
 
     print("\nGenerated Candidates:")
     print(json.dumps(result["candidates"], indent=2))
