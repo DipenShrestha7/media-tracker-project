@@ -1,6 +1,13 @@
 {
-  "python-envs.defaultEnvManager": "ms-python.python:system",
-  "python.defaultInterpreterPath": "C:/Coding/media-tracker/apps/ai_service/venv/Scripts/python.exe",
+  "python.defaultInterpreterPath": "${workspaceFolder}/apps/ai_service/venv/Scripts/python.exe",
+  "python.venvFolders": [
+    "apps/ai_service"
+  ],
+  "python.analysis.extraPaths": [
+    "apps/ai_service",
+    "apps/ai_service/venv/Lib/site-packages",
+    "C:/Coding/media-tracker/apps/ai_service/venv/Lib/site-packages"
+  ],
   "workbench.iconTheme": "material-icon-theme",
   "git.ignoreMissingGitWarning": true,
   "terminal.integrated.fontLigatures.enabled": true,

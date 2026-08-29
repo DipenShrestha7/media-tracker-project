@@ -1,6 +1,7 @@
+import asyncio
+from collections import defaultdict
 import sys
 from pathlib import Path
-import json
 
 # Ensure parent directory is in sys.path for direct execution
 sys.path.append(str(Path(__file__).resolve().parent.parent))
@@ -11,13 +12,11 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.output_parsers import PydanticOutputParser
-from langgraph.prebuilt import ToolNode, tools_condition
 from models.recommendaModel import (
     RecommendationList,
     RecommendationState,
 )
 from tools.web_tool import recommend_search_tool
-from prompts.recommendPrompt import AGENT_SYSTEM_PROMPT
 from prompts.recommendPrompt import EXTRACTOR_SYSTEM_PROMPT
 
 llm = ChatOpenAI(
@@ -29,37 +28,87 @@ llm = ChatOpenAI(
 )
 
 
-# Node 1: Reasoning & Tool Calling
+def analyze_user_library(library: list):
+    """
+    Groups items by media type and aggregates top genres and favorite titles.
+    """
+    grouped = defaultdict(list)
+    for item in library:
+        media_type = item.get("type", "movie").lower()
+        grouped[media_type].append(item)
 
+    profile = {}
+    search_queries = {}
 
-def agent_node(state: RecommendationState):
-    llm_with_tools = llm.bind_tools([recommend_search_tool])
-    messages = state.get("messages", [])
-    # If starting fresh, attach system prompt and library input
-    if not messages:
-        system_prompt = SystemMessage(content=AGENT_SYSTEM_PROMPT)
-        user_msg = HumanMessage(
-            content=f"User Library context: {state['user_library']}"
+    for m_type, items in grouped.items():
+        # Sort items by rating descending if available
+        sorted_items = sorted(
+            items, key=lambda x: x.get("user_rating", 0), reverse=True
         )
-        messages_to_send = [system_prompt, user_msg]
-    else:
-        messages_to_send = state["messages"]
 
-    response = llm_with_tools.invoke(messages_to_send)
+        genres = set()
+        fav_titles = []
+        for it in sorted_items:
+            for g in it.get("genres", []):
+                genres.add(g)
+            if len(fav_titles) < 3:
+                fav_titles.append(it.get("title"))
 
-    # --- DEBUG LOGGING ---
-    if response.tool_calls:
-        for tool_call in response.tool_calls:
-            print(f"🔍 AGENT IS SEARCHING FOR: {tool_call['args']}")
-    else:
-        print("🤖 AGENT FINISHED SEARCHING (Proceeding to Extractor)")
-    # ---------------------
+        genre_str = ", ".join(list(genres)[:4])
+        fav_str = ", ".join(fav_titles)
 
-    return {"messages": [response]}
+        profile[m_type] = {
+            "top_genres": list(genres),
+            "favorites": fav_titles,
+            "count": len(items),
+        }
+
+        # Build category-targeted query
+        search_queries[m_type] = (
+            f"best top rated {m_type} similar to {fav_str} {genre_str}"
+        )
+
+    return profile, search_queries
 
 
-# 4. Node 2: Final Structured Extraction
-def extractor_node(state: RecommendationState):
+# Node 1: Category Parallel Search & Context Builder
+async def search_node(state: RecommendationState):
+    library = state.get("user_library", [])
+    profile, search_queries = analyze_user_library(library)
+
+    async def _fetch_category_search(m_type: str, query: str):
+        try:
+            res = await recommend_search_tool.ainvoke({"query": query})
+            return f"=== Web Search Results for Category [{m_type.upper()}] (Query: '{query}') ===\n{res}\n"
+        except Exception as e:
+            return f"Search failed for category {m_type}: {e}"
+
+    tasks = [
+        _fetch_category_search(m_type, query)
+        for m_type, query in search_queries.items()
+    ]
+    search_results = await asyncio.gather(*tasks)
+    combined_search_context = "\n".join(search_results)
+
+    formatted_profile = "\n".join(
+        [
+            f"- Type: {m_type} | Favorites: {', '.join(info['favorites'])} | Top Genres: {', '.join(info['top_genres'])}"
+            for m_type, info in profile.items()
+        ]
+    )
+
+    profile_msg = HumanMessage(
+        content=(
+            f"USER LIBRARY PREFERENCE PROFILE:\n{formatted_profile}\n\n"
+            f"SEARCH RESULTS BY CATEGORY:\n{combined_search_context}"
+        )
+    )
+
+    return {"messages": [profile_msg]}
+
+
+# Node 2: Structured Recommendation Extractor
+async def extractor_node(state: RecommendationState):
     parser = PydanticOutputParser(pydantic_object=RecommendationList)
     prompt = ChatPromptTemplate.from_messages(
         [
@@ -72,10 +121,9 @@ def extractor_node(state: RecommendationState):
         ]
     )
 
-    # 3. Chain prompt -> standard llm -> parser
     chain = prompt | llm | parser
 
-    result = chain.invoke(
+    result = await chain.ainvoke(
         {
             "messages": state["messages"],
             "format_instructions": parser.get_format_instructions(),
@@ -86,81 +134,15 @@ def extractor_node(state: RecommendationState):
     return {"candidates": candidate_dicts}
 
 
-# 5. Graph Assembly
-workflow = StateGraph(RecommendationState)
+# Graph Assembly
+workflow = StateGraph(RecommendationState)  # type: ignore[arg-type]
 
-workflow.add_node("agent", agent_node)
-workflow.add_node("tools", ToolNode([recommend_search_tool]))
+
+workflow.add_node("search", search_node)
 workflow.add_node("extractor", extractor_node)
 
-workflow.add_edge(START, "agent")
-
-# If the agent requests search, route to 'tools'. If done searching, route to 'extractor'.
-workflow.add_conditional_edges(
-    "agent",
-    tools_condition,
-    {
-        "tools": "tools",  # Routes to tool execution when tools are requested
-        "__end__": "extractor",  # Routes to extraction node when search is finished
-    },
-)
-
-# After tool runs, loop back to agent to inspect search results
-workflow.add_edge("tools", "agent")
+workflow.add_edge(START, "search")
+workflow.add_edge("search", "extractor")
 workflow.add_edge("extractor", END)
 
 recommendation_app = workflow.compile()
-
-if __name__ == "__main__":
-    MOCK_USER_LIBRARY = [
-        {
-            "title": "Interstellar",
-            "type": "movie",
-            "genres": ["Sci-Fi", "Adventure"],
-            "user_rating": 9.0,
-        },
-        {
-            "title": "Demon Slayer",
-            "type": "anime",
-            "genres": ["Action", "Fantasy"],
-            "user_rating": 8.5,
-        },
-        {
-            "title": "Breaking Bad",
-            "type": "series",
-            "genres": ["Crime", "Drama"],
-            "user_rating": 9.5,
-        },
-        {
-            "title": "Vincenzo",
-            "type": "series",
-            "genres": ["Dark Comedy", "Action", "Crime"],
-            "user_rating": 8.4,
-        },
-    ]
-    print("--- Running Recommendation Graph with Mock Library ---")
-
-    # Run graph
-    initial_state = {
-        "messages": [],
-        "user_library": MOCK_USER_LIBRARY,
-        "candidates": [],
-    }
-    result = recommendation_app.invoke(initial_state)
-
-    print("\n--- AGENT EXECUTION LOG ---")
-    for i, msg in enumerate(result["messages"]):
-        # 1. Inspect what search query the LLM issued
-        if hasattr(msg, "tool_calls") and msg.tool_calls:
-            for call in msg.tool_calls:
-                print(f"\n[Turn {i}] LLM Issued Search Query:")
-                print(f"  Tool Name: {call['name']}")
-                print(f"  Query Arguments: {call['args']}")
-
-        # 2. Inspect what Tavily returned
-        elif msg.type == "tool":
-            print(f"\n[Turn {i}] Tavily Raw Search Output:")
-            print(f"  {msg.content[:300]}...")
-
-    print("\nGenerated Candidates:")
-    print(json.dumps(result["candidates"], indent=2))

@@ -2,7 +2,7 @@ from langchain_tavily import TavilySearch
 from config import settings
 
 
-def get_web_search_tool():
+def get_web_search_tool() -> TavilySearch:
     """Returns an initialized Tavily Search Tool tuned for current media updates."""
     return TavilySearch(
         api_key=settings.TAVILY_API_KEY,
@@ -24,7 +24,7 @@ def get_web_recommend_tool():
     """Returns an initialized Tavily Search Tool tuned for current media updates."""
     return TavilySearch(
         api_key=settings.TAVILY_API_KEY,
-        max_results=5,
+        max_results=3,
         search_depth="basic",
         include_raw_content=False,
         include_domains=[
@@ -35,15 +35,9 @@ def get_web_recommend_tool():
             "rottentomatoes.com",
         ],
         description=(
-            """
-            You are an expert media recommendation engine for NEXUS.
-            Analyze ALL items in the user's library across ALL genres and media types (Movies, TV Series, Anime, Manga).
-
-            Rules for Recommendations:
-            1. Diversity: You MUST recommend a mix matching the user's library types (e.g., at least 1 Anime, 1 TV Series, and Movies).
-            2. Relevance: Do not recommend generic blockbusters unless they directly match the user's specific genre preferences (e.g., Crime/Drama, Action/Fantasy, Sci-Fi/Adventure).
-            3. Accuracy: Ensure exact official titles and release years.
-            """
+            "Search for top-rated, highly recommended, or trending media titles. "
+            "Input a specific search query containing genres and media formats "
+            "(e.g., 'top rated dark fantasy anime', 'best sci-fi space movies')."
         ),
     )
 

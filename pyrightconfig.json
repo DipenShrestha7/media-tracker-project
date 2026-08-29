@@ -1,0 +1,8 @@
+{
+  "venvPath": "apps/ai_service",
+  "venv": "venv",
+  "extraPaths": [
+    "apps/ai_service",
+    "apps/ai_service/venv/Lib/site-packages"
+  ]
+}
