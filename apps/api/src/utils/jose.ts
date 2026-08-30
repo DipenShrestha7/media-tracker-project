@@ -15,5 +15,5 @@ export async function generateToken(payload: {
 
 export async function verifyToken(token: string) {
   const { payload } = await jwtVerify(token, SECRET_KEY);
-  return payload;
+  return payload as { userId: string; email: string };
 }

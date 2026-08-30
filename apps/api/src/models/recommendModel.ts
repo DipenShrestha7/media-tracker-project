@@ -32,7 +32,7 @@ if (sequelize) {
   RecommendationEntry.init(
     {
       user_id: {
-        type: DataTypes.STRING,
+        type: DataTypes.UUID,
         primaryKey: true,
         allowNull: false,
       },

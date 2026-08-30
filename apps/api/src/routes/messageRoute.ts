@@ -171,7 +171,7 @@ async function messageRoutes(fastify: FastifyInstance) {
 
           const libraryString = formatLibraryToString(libraryItems);
 
-          systemContent += 
+          systemContent +=
             `\n\n${libraryString}\n\n` +
             `INSTRUCTIONS:\n` +
             `- Never suggest items from [COMPLETED] or [CURRENTLY WATCHING].\n` +
@@ -260,34 +260,6 @@ async function messageRoutes(fastify: FastifyInstance) {
             .send({ error: "Failed to forward request to AI service" });
         }
         reply.raw.end();
-      }
-    },
-  );
-
-  fastify.post(
-    "/recommend",
-    async (
-      request: FastifyRequest<{ Body: { prompt: string } }>,
-      reply: FastifyReply,
-    ) => {
-      const { prompt } = request.body;
-
-      if (!prompt) {
-        return reply.status(400).send({ message: "prompt is required" });
-      }
-
-      try {
-        // Forward query to Python's structured output endpoint
-        const response = await axios.post(`${AI_SERVICE_URL}/chat/recommend`, {
-          message: prompt,
-        });
-
-        return reply.send(response.data);
-      } catch (error: any) {
-        fastify.log.error(error);
-        const errorMessage =
-          error.response?.data?.detail || "Recommendation service error";
-        return reply.status(500).send({ error: errorMessage });
       }
     },
   );

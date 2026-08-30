@@ -90,21 +90,33 @@ async def search_node(state: RecommendationState):
     search_results = await asyncio.gather(*tasks)
     combined_search_context = "\n".join(search_results)
 
-    formatted_profile = "\n".join(
-        [
-            f"- Type: {m_type} | Favorites: {', '.join(info['favorites'])} | Top Genres: {', '.join(info['top_genres'])}"
-            for m_type, info in profile.items()
-        ]
-    )
-
-    profile_msg = HumanMessage(
-        content=(
-            f"USER LIBRARY PREFERENCE PROFILE:\n{formatted_profile}\n\n"
-            f"SEARCH RESULTS BY CATEGORY:\n{combined_search_context}"
+    if not profile:
+        profile_msg = HumanMessage(
+            content=(
+                "USER LIBRARY PREFERENCE PROFILE:\n"
+                "The user library is empty (no saved media yet).\n\n"
+                "INSTRUCTION:\n"
+                "Since the user library is currently empty, provide a well-balanced starter recommendation list "
+                "featuring universally acclaimed, top-rated media across Movies, TV Series, and Anime."
+            )
         )
-    )
+    else:
+        formatted_profile = "\n".join(
+            [
+                f"- Type: {m_type} | Favorites: {', '.join(info['favorites'])} | Top Genres: {', '.join(info['top_genres'])}"
+                for m_type, info in profile.items()
+            ]
+        )
+
+        profile_msg = HumanMessage(
+            content=(
+                f"USER LIBRARY PREFERENCE PROFILE:\n{formatted_profile}\n\n"
+                f"SEARCH RESULTS BY CATEGORY:\n{combined_search_context}"
+            )
+        )
 
     return {"messages": [profile_msg]}
+
 
 
 # Node 2: Structured Recommendation Extractor
