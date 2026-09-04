@@ -405,6 +405,315 @@ async function fetchTvMazeItems(searchTerm?: string): Promise<ExploreItem[]> {
     }));
 }
 
+const CANDIDATE_TYPE_MAP: Record<string, ExploreType> = {
+  movie: "MOVIE",
+  movies: "MOVIE",
+  series: "TV_SHOW",
+  tv: "TV_SHOW",
+  tv_show: "TV_SHOW",
+  "tv show": "TV_SHOW",
+  kdrama: "KDRAMA",
+  "k-drama": "KDRAMA",
+  anime: "ANIME",
+  manga: "MANGA",
+  manhwa: "MANHWA",
+};
+
+const mapCandidateType = (value?: string): ExploreType => {
+  if (!value) {
+    return "MOVIE";
+  }
+
+  const normalized = value.trim().toLowerCase().replace(/-/g, "_");
+  return CANDIDATE_TYPE_MAP[normalized] ?? (value.toUpperCase() as ExploreType);
+};
+
+const inferSource = (
+  type: ExploreType,
+  hint?: string,
+): ExploreItem["source"] => {
+  const normalized = hint?.toUpperCase();
+  if (normalized === "OMDB" || normalized === "ANILIST" || normalized === "TVMAZE") {
+    return normalized;
+  }
+
+  if (type === "ANIME" || type === "MANGA" || type === "MANHWA") {
+    return "ANILIST";
+  }
+  if (type === "KDRAMA") {
+    return "TVMAZE";
+  }
+  return "OMDB";
+};
+
+const stubExploreItem = (
+  candidate: {
+    title?: string;
+    year?: number | null;
+    type?: string;
+    source_hint?: string;
+    source?: string;
+  },
+  index: number,
+): ExploreItem => {
+  const type = mapCandidateType(candidate.type);
+  return {
+    id: `rec-${index}-${(candidate.title || "unknown").toLowerCase().replace(/\s+/g, "-")}`,
+    externalId: candidate.title || `rec-${index}`,
+    title: candidate.title || "Unknown Media",
+    type,
+    posterUrl: FALLBACK_POSTER,
+    rating: undefined,
+    year: candidate.year ?? undefined,
+    genre: [],
+    source: inferSource(type, candidate.source_hint || candidate.source),
+  };
+};
+
+async function lookupOmdbTitle(
+  apiKey: string,
+  title: string,
+  year?: number,
+  type?: ExploreType,
+): Promise<ExploreItem | null> {
+  const params = new URLSearchParams({
+    apikey: apiKey,
+    t: title,
+    plot: "short",
+    r: "json",
+  });
+  if (year) {
+    params.set("y", String(year));
+  }
+  if (type === "TV_SHOW") {
+    params.set("type", "series");
+  } else if (type === "MOVIE") {
+    params.set("type", "movie");
+  }
+
+  const response = await fetch(`https://www.omdbapi.com/?${params.toString()}`);
+  if (!response.ok) {
+    return null;
+  }
+
+  const detail: {
+    Response?: string;
+    imdbID?: string;
+    Title?: string;
+    Poster?: string;
+    imdbRating?: string;
+    Genre?: string;
+    Year?: string;
+    Type?: string;
+  } = await response.json();
+
+  if (detail.Response !== "True" || !detail.imdbID || !detail.Title) {
+    return null;
+  }
+
+  return {
+    id: `omdb-${detail.imdbID}`,
+    externalId: detail.imdbID,
+    title: detail.Title,
+    type: detail.Type === "series" ? "TV_SHOW" : "MOVIE",
+    posterUrl: formatPoster(detail.Poster),
+    rating: safeNumber(detail.imdbRating),
+    year: parseYear(detail.Year) ?? year,
+    genre: detail.Genre
+      ? detail.Genre.split(",")
+          .map((entry) => entry.trim())
+          .filter(Boolean)
+      : [],
+    source: "OMDB",
+  };
+}
+
+async function lookupAniListTitle(
+  title: string,
+  type: "ANIME" | "MANGA" | "MANHWA",
+): Promise<ExploreItem | null> {
+  const mediaType = type === "ANIME" ? "ANIME" : "MANGA";
+  const response = await fetch("https://graphql.anilist.co/", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      query: `
+        query RecMedia($search: String!, $type: MediaType) {
+          Page(page: 1, perPage: 1) {
+            media(search: $search, type: $type, isAdult: false, sort: SEARCH_MATCH) {
+              id
+              type
+              countryOfOrigin
+              format
+              averageScore
+              genres
+              coverImage { extraLarge large }
+              title { romaji english native }
+              startDate { year }
+            }
+          }
+        }
+      `,
+      variables: { search: title, type: mediaType },
+    }),
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const payload: {
+    data?: {
+      Page?: {
+        media?: Array<{
+          id: number;
+          countryOfOrigin?: string | null;
+          format?: string | null;
+          averageScore?: number | null;
+          genres?: string[] | null;
+          coverImage?: { extraLarge?: string | null; large?: string | null } | null;
+          title?: {
+            romaji?: string | null;
+            english?: string | null;
+            native?: string | null;
+          } | null;
+          startDate?: { year?: number | null } | null;
+        }>;
+      };
+    };
+  } = await response.json();
+
+  const item = payload.data?.Page?.media?.[0];
+  if (!item) {
+    return null;
+  }
+
+  const isManhwa = item.countryOfOrigin === "KR" || item.format === "MANHWA";
+  const resolvedType: ExploreType =
+    mediaType === "ANIME" ? "ANIME" : isManhwa ? "MANHWA" : "MANGA";
+
+  return {
+    id: `anilist-${resolvedType.toLowerCase()}-${item.id}`,
+    externalId: String(item.id),
+    title:
+      item.title?.english ||
+      item.title?.romaji ||
+      item.title?.native ||
+      title,
+    type: resolvedType,
+    posterUrl:
+      item.coverImage?.extraLarge || item.coverImage?.large || FALLBACK_POSTER,
+    rating:
+      typeof item.averageScore === "number"
+        ? Number((item.averageScore / 10).toFixed(1))
+        : undefined,
+    year: item.startDate?.year ?? undefined,
+    genre: item.genres?.slice(0, 4) ?? [],
+    source: "ANILIST",
+  };
+}
+
+async function lookupTvMazeTitle(title: string): Promise<ExploreItem | null> {
+  const response = await fetch(
+    `https://api.tvmaze.com/singlesearch/shows?q=${encodeURIComponent(title)}`,
+  );
+  if (!response.ok) {
+    return null;
+  }
+
+  const show: {
+    id: number;
+    name: string;
+    genres?: string[] | null;
+    premiered?: string | null;
+    rating?: { average?: number | null } | null;
+    image?: { medium?: string | null; original?: string | null } | null;
+  } = await response.json();
+
+  if (!show?.id) {
+    return null;
+  }
+
+  return {
+    id: `tvmaze-${show.id}`,
+    externalId: String(show.id),
+    title: show.name,
+    type: "KDRAMA",
+    posterUrl: show.image?.original || show.image?.medium || FALLBACK_POSTER,
+    rating: show.rating?.average ?? undefined,
+    year: parseYear(show.premiered),
+    genre: show.genres?.slice(0, 4) ?? ["Drama"],
+    source: "TVMAZE",
+  };
+}
+
+export async function hydrateMediaCandidates(
+  candidates: Array<{
+    title?: string;
+    year?: number | null;
+    type?: string;
+    source_hint?: string;
+    source?: string;
+    posterUrl?: string;
+    poster_url?: string;
+    id?: string;
+    externalId?: string;
+    rating?: number | null;
+    genre?: string[];
+    genres?: string[];
+  }>,
+): Promise<ExploreItem[]> {
+  const apiKey = process.env.OMDB_API_KEY;
+
+  return Promise.all(
+    candidates.map(async (candidate, index) => {
+      const existingPoster = candidate.posterUrl || candidate.poster_url;
+      if (existingPoster && candidate.id && candidate.externalId) {
+        const type = mapCandidateType(candidate.type);
+        return {
+          id: candidate.id,
+          externalId: candidate.externalId,
+          title: candidate.title || "Unknown Media",
+          type,
+          posterUrl: existingPoster,
+          rating: candidate.rating ?? undefined,
+          year: candidate.year ?? undefined,
+          genre: candidate.genre || candidate.genres || [],
+          source: inferSource(type, candidate.source_hint || candidate.source),
+        };
+      }
+
+      const type = mapCandidateType(candidate.type);
+      const source = inferSource(type, candidate.source_hint || candidate.source);
+      const title = candidate.title?.trim();
+      if (!title) {
+        return stubExploreItem(candidate, index);
+      }
+
+      try {
+        let hydrated: ExploreItem | null = null;
+        if (source === "ANILIST") {
+          hydrated = await lookupAniListTitle(
+            title,
+            type === "ANIME" ? "ANIME" : type === "MANHWA" ? "MANHWA" : "MANGA",
+          );
+        } else if (source === "TVMAZE") {
+          hydrated = await lookupTvMazeTitle(title);
+        } else if (apiKey) {
+          hydrated = await lookupOmdbTitle(apiKey, title, candidate.year ?? undefined, type);
+        }
+
+        return hydrated ?? stubExploreItem(candidate, index);
+      } catch {
+        return stubExploreItem(candidate, index);
+      }
+    }),
+  );
+}
+
 export async function buildExploreResponse(
   searchTerm?: string,
   libraryIds?: Set<string>,

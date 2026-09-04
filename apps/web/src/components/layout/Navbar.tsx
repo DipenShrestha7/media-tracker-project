@@ -116,6 +116,11 @@ function Navbar({
           </NavLink>
         </li>
         <li>
+          <NavLink to="/recommendations" className={getNavLinkClassName}>
+            Recommendations
+          </NavLink>
+        </li>
+        <li>
           <NavLink to="/assistant" className={getNavLinkClassName}>
             Nexus AI
           </NavLink>

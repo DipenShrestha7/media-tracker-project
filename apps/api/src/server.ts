@@ -6,6 +6,7 @@ import libraryRoutes from "./routes/libraryRoute.js";
 import loginRoutes from "./routes/loginRoute.js";
 import messageRoutes from "./routes/messageRoute.js";
 import sessionRoutes from "./routes/sessionRoute.js";
+import recommendRoute from "./routes/recommendRoute.js";
 
 dotenv.config();
 
@@ -62,6 +63,7 @@ export const buildServer = () => {
   fastify.register(loginRoutes, { prefix: "/api" });
   fastify.register(sessionRoutes, { prefix: "/api" });
   fastify.register(messageRoutes, { prefix: "/api" });
+  fastify.register(recommendRoute, { prefix: "/api" });
   return fastify;
 };
 

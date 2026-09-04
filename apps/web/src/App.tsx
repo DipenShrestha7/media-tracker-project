@@ -6,6 +6,7 @@ import Assistant from "./components/pages/Assistant.tsx";
 import About from "./components/pages/About.tsx";
 import Library from "./components/pages/Library.tsx";
 import HomePage from "./components/pages/HomePage.tsx";
+import Recommendations from "./components/pages/Recommendations.tsx";
 import { Routes, Route, Navigate } from "react-router";
 
 export default function App() {
@@ -34,14 +35,34 @@ export default function App() {
 
       <div className="flex-1 min-h-0">
         <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/homepage" element={<HomePage />} />
+          <Route
+            path="/"
+            element={
+              <HomePage
+                onOpenLogin={() => setIsLoginOpen(true)}
+                authVersion={authVersion}
+              />
+            }
+          />
+          <Route
+            path="/homepage"
+            element={
+              <HomePage
+                onOpenLogin={() => setIsLoginOpen(true)}
+                authVersion={authVersion}
+              />
+            }
+          />
           <Route
             path="/explore"
             element={<Explore onOpenLogin={() => setIsLoginOpen(true)} />}
           />
           <Route path="/library" element={<Library />} />
           <Route path="/assistant" element={<Assistant />} />
+          <Route
+            path="/recommendations"
+            element={<Recommendations onOpenLogin={() => setIsLoginOpen(true)} />}
+          />
           <Route path="/about" element={<About />} />
           <Route path="*" element={<Navigate to="/homepage" replace />} />
         </Routes>

@@ -1,61 +1,120 @@
-import React, { useState, type SubmitEvent, type ChangeEvent } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useState,
+  type SubmitEvent,
+  type ChangeEvent,
+} from "react";
 import { useNavigate } from "react-router";
+import { Sparkles } from "lucide-react";
 import MediaCard from "../common/MediaCard";
-import type { MediaItem } from "../../types";
 import Footer from "../layout/Footer.tsx";
+import type { ExploreItem } from "../../types/explore";
+import { addItemToLibrary } from "../../lib/libraryApi";
 
-export const recommendations: MediaItem[] = [
-  {
-    id: 1,
-    title: "Interstellar",
-    genre: "Sci-Fi • Adventure",
-    type: "Movie",
-    rating: "8.6/10",
-    image: "",
-  },
-  {
-    id: 2,
-    title: "Demon Slayer",
-    genre: "Action • Fantasy",
-    type: "Anime",
-    rating: "8.7/10",
-    image: "",
-  },
-  {
-    id: 3,
-    title: "Breaking Bad",
-    genre: "Crime • Drama",
-    type: "TV Show",
-    rating: "9.5/10",
-    image: "",
-  },
-  {
-    id: 4,
-    title: "Berserk",
-    genre: "Dark Fantasy • Action",
-    type: "Manga",
-    rating: "9.2/10",
-    image: "",
-  },
-  {
-    id: 5,
-    title: "Crash Landing on You",
-    genre: "Romance • Drama",
-    type: "K-Drama",
-    rating: "8.8/10",
-    image: "",
-  },
-];
+interface HomePageProps {
+  onOpenLogin: () => void;
+  authVersion?: number;
+}
 
-const HomePage: React.FC = () => {
+const HomePage: React.FC<HomePageProps> = ({ onOpenLogin, authVersion = 0 }) => {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [recommendations, setRecommendations] = useState<ExploreItem[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(
+    () => localStorage.getItem("nexus_token"),
+  );
+  const [savingIds, setSavingIds] = useState<Record<string, boolean>>({});
+  const [addedIds, setAddedIds] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    setToken(localStorage.getItem("nexus_token"));
+  }, [authVersion]);
+
+  const fetchTopRecommendations = useCallback(async () => {
+    const authToken = localStorage.getItem("nexus_token");
+    if (!authToken) {
+      setRecommendations([]);
+      setError(null);
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/recommendations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({ refresh: false }),
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          localStorage.removeItem("nexus_token");
+          setToken(null);
+          setRecommendations([]);
+          setError("Please login to see recommendations.");
+          return;
+        }
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData.error || errorData.detail || `HTTP ${response.status}`,
+        );
+      }
+
+      const data = await response.json();
+      const recs: ExploreItem[] =
+        data.recommendations || data.metadata?.recommendations || [];
+      setRecommendations(recs.slice(0, 5));
+    } catch (err: unknown) {
+      console.error("Failed to fetch home recommendations:", err);
+      setRecommendations([]);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to load recommendations.",
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchTopRecommendations();
+  }, [token, fetchTopRecommendations]);
 
   const handleSearch = (e: SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
     navigate(`/explore?q=${encodeURIComponent(searchQuery.trim())}`);
   };
+
+  const handleSaveItem = async (item: ExploreItem) => {
+    if (!token) {
+      onOpenLogin();
+      return;
+    }
+
+    setSavingIds((prev) => ({ ...prev, [item.id]: true }));
+    try {
+      await addItemToLibrary(item);
+      setAddedIds((prev) => ({ ...prev, [item.id]: true }));
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Unable to save this item.",
+      );
+    } finally {
+      setSavingIds((prev) => ({ ...prev, [item.id]: false }));
+    }
+  };
+
   return (
     <div>
       <section className="relative px-8 py-12 md:py-20 max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
@@ -140,7 +199,6 @@ const HomePage: React.FC = () => {
         </div>
       </section>
       <section className="px-8 max-w-7xl mx-auto my-12">
-        {/* Header Row */}
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
@@ -151,33 +209,84 @@ const HomePage: React.FC = () => {
             </p>
           </div>
 
-          <button className="text-cyan-600 dark:text-cyan-400 font-semibold hover:text-cyan-700 dark:hover:text-cyan-300 text-sm flex items-center gap-1 transition-colors">
-            <button>Refresh</button>
-            <span className="text-xs">↻</span>
+          <button
+            onClick={() => navigate("/recommendations")}
+            className="text-cyan-600 dark:text-cyan-400 font-semibold hover:text-cyan-700 dark:hover:text-cyan-300 text-sm flex items-center gap-1 transition-colors"
+          >
+            View All
+            <span className="text-xs">→</span>
           </button>
         </div>
-        <div className="relative">
-          <div className="flex gap-6 overflow-x-auto pb-4 no-scrollbar">
-            {recommendations.map((item: MediaItem) => (
-              <MediaCard
-                key={item.id}
-                title={item.title}
-                genre={item.genre}
-                type={item.type}
-                rating={item.rating}
-                image={item.image}
+
+        {!token ? (
+          <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/60 p-10 text-center space-y-4">
+            <Sparkles className="w-10 h-10 text-cyan-500 mx-auto" />
+            <p className="text-slate-600 dark:text-slate-300 font-medium">
+              Login to see personalized recommendations
+            </p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+              We use your library to suggest movies, shows, anime, and more.
+            </p>
+            <button
+              onClick={onOpenLogin}
+              className="px-6 py-2.5 bg-cyan-500 hover:bg-cyan-600 text-white rounded-xl font-semibold text-sm transition-colors"
+            >
+              Login
+            </button>
+          </div>
+        ) : isLoading ? (
+          <div className="flex gap-6 overflow-x-auto pb-4">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div
+                key={i}
+                className="min-w-50 w-56 shrink-0 rounded-2xl aspect-2/3 bg-slate-200 dark:bg-slate-800 animate-pulse"
               />
             ))}
           </div>
-
-          <div className="flex justify-center items-center gap-2 mt-6">
-            <span className="w-6 h-2 rounded-full bg-cyan-600 dark:bg-cyan-500"></span>
-            <span className="w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-700"></span>
-            <span className="w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-700"></span>
-            <span className="w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-700"></span>
-            <span className="w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-700"></span>
+        ) : error ? (
+          <div className="rounded-3xl border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/50 p-6 text-rose-700 dark:text-rose-300 text-sm">
+            {error}
           </div>
-        </div>
+        ) : recommendations.length === 0 ? (
+          <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/60 p-10 text-center text-slate-500 dark:text-slate-400 space-y-3">
+            <p>No recommendations yet.</p>
+            <p className="text-sm">
+              Add items to your library, then visit Recommendations to generate
+              picks.
+            </p>
+            <button
+              onClick={() => navigate("/recommendations")}
+              className="px-5 py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded-xl font-semibold text-sm transition-colors"
+            >
+              Get recommendations
+            </button>
+          </div>
+        ) : (
+          <div className="relative">
+            <div className="flex gap-6 overflow-x-auto pb-4 no-scrollbar">
+              {recommendations.map((item) => (
+                <MediaCard
+                  key={item.id}
+                  title={item.title}
+                  genre={
+                    item.genre.length > 0
+                      ? item.genre.join(" • ")
+                      : "No genre listed"
+                  }
+                  type={item.type}
+                  rating={item.rating}
+                  image={item.posterUrl}
+                  year={item.year}
+                  inLibrary={Boolean(item.inLibrary) || Boolean(addedIds[item.id])}
+                  onAddToLibrary={() => {
+                    if (savingIds[item.id]) return;
+                    void handleSaveItem(item);
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        )}
       </section>
       <Footer />
     </div>

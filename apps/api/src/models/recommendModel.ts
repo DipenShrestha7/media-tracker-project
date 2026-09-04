@@ -11,11 +11,13 @@ export interface RecommendationItem {
   id: string;
   externalId: string;
   title: string;
-  type: "movie" | "anime" | "series" | "manga" | "manhwa" | "kdrama";
+  type: "MOVIE" | "TV_SHOW" | "ANIME" | "MANGA" | "MANHWA" | "KDRAMA";
   posterUrl: string;
-  rating: number | null;
-  year: number | null;
+  rating: number | null | undefined;
+  year: number | null | undefined;
   genre: string[];
+  source: "OMDB" | "ANILIST" | "TVMAZE";
+  inLibrary?: boolean;
 }
 
 export class RecommendationEntry extends Model<

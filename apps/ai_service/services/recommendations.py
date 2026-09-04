@@ -12,6 +12,7 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.output_parsers import PydanticOutputParser
+from pydantic import SecretStr
 from models.recommendaModel import (
     RecommendationList,
     RecommendationState,
@@ -22,9 +23,9 @@ from prompts.recommendPrompt import EXTRACTOR_SYSTEM_PROMPT
 llm = ChatOpenAI(
     base_url="https://openrouter.ai/api/v1",
     model="openai/gpt-oss-120b",
-    api_key=settings.OPENROUTER_API_KEY,
+    api_key=SecretStr(settings.OPENROUTER_API_KEY),
     temperature=0.7,
-    max_tokens=4000,
+    max_completion_tokens=4000,
 )
 
 
@@ -116,7 +117,6 @@ async def search_node(state: RecommendationState):
         )
 
     return {"messages": [profile_msg]}
-
 
 
 # Node 2: Structured Recommendation Extractor

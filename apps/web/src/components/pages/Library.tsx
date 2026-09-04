@@ -7,6 +7,7 @@ import {
   PlayCircle,
   Star,
   Trash2,
+  Sparkles,
 } from "lucide-react";
 import type { LibraryItem, LibraryStatus } from "../../types/library";
 import {
@@ -14,6 +15,7 @@ import {
   fetchLibraryItems,
   updateLibraryItemStatus,
 } from "../../lib/libraryApi";
+import { useNavigate } from "react-router";
 
 type StatusFilter = "ALL" | LibraryStatus;
 
@@ -39,6 +41,7 @@ const statusTabs: Array<{
 ];
 
 const Library: React.FC = () => {
+  const navigate = useNavigate();
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [selectedStatus, setSelectedStatus] = useState<StatusFilter>("ALL");
   const [selectedType, setSelectedType] = useState<string>("ALL");
@@ -113,9 +116,18 @@ const Library: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-cyan-500/10 text-cyan-500 font-bold text-sm w-fit">
-          <CheckCircle2 className="w-4 h-4" />
-          <span>Total Completed: {completedItems.length}</span>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+          <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-cyan-500/10 text-cyan-500 font-bold text-sm w-fit">
+            <CheckCircle2 className="w-4 h-4" />
+            <span>Total Completed: {completedItems.length}</span>
+          </div>
+          <button
+            onClick={() => navigate("/recommendations")}
+            className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-purple-500/10 text-purple-600 dark:text-purple-400 font-bold text-sm hover:bg-purple-500/20 transition-colors"
+          >
+            <Sparkles className="w-4 h-4" />
+            Get Recommendations
+          </button>
         </div>
       </div>
 
